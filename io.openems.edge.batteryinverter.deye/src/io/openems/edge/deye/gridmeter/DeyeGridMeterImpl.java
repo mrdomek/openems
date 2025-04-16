@@ -97,9 +97,31 @@ public class DeyeGridMeterImpl extends AbstractOpenemsModbusComponent implements
 
 	@Override
 	protected ModbusProtocol defineModbusProtocol() {
-		return new ModbusProtocol(this, new FC3ReadRegistersTask(625, Priority.HIGH,
-				m(ElectricityMeter.ChannelId.ACTIVE_POWER, new SignedWordElement(625))));
+	    return new ModbusProtocol(this,
+	        new FC3ReadRegistersTask(598, Priority.HIGH, // Voltage L1–L3
+	            m(ElectricityMeter.ChannelId.VOLTAGE_L1, new SignedWordElement(598)), // 0.1 V
+	            m(ElectricityMeter.ChannelId.VOLTAGE_L2, new SignedWordElement(599)),
+	            m(ElectricityMeter.ChannelId.VOLTAGE_L3, new SignedWordElement(600))
+	        ),
+	        new FC3ReadRegistersTask(610, Priority.HIGH, // Current L1–L3
+	            m(ElectricityMeter.ChannelId.CURRENT_L1, new SignedWordElement(610)), // 0.01 A
+	            m(ElectricityMeter.ChannelId.CURRENT_L2, new SignedWordElement(611)),
+	            m(ElectricityMeter.ChannelId.CURRENT_L3, new SignedWordElement(612))
+	        ),
+	        new FC3ReadRegistersTask(622, Priority.HIGH, // ActivePower L1–L3
+	            m(ElectricityMeter.ChannelId.ACTIVE_POWER_L1, new SignedWordElement(622)), // 1 W
+	            m(ElectricityMeter.ChannelId.ACTIVE_POWER_L2, new SignedWordElement(623)),
+	            m(ElectricityMeter.ChannelId.ACTIVE_POWER_L3, new SignedWordElement(624))
+	        ),
+	        new FC3ReadRegistersTask(625, Priority.HIGH, // Total Active Power
+	            m(ElectricityMeter.ChannelId.ACTIVE_POWER, new SignedWordElement(625))
+	        ),
+	        new FC3ReadRegistersTask(609, Priority.HIGH,
+	            m(ElectricityMeter.ChannelId.FREQUENCY, new SignedWordElement(609)) // 0.01 Hz
+	        )
+	    );
 	}
+
 
 	@Override
 	public void handleEvent(Event event) {
