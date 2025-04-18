@@ -24,7 +24,7 @@ import org.osgi.service.metatype.annotations.ObjectClassDefinition;
 	String modbus_id() default "modbus0";
 
 	@AttributeDefinition(name = "Modbus Unit-ID", description = "The Unit-ID of the Modbus device.")
-	int unit_id() default 1;
+	int modbusUnitId() default 1;
 
 	// --- NEU: Hinzugefügte Konfigurationsparameter ---
 	@AttributeDefinition(name = "Nominal Power [W]", description = "Nominal AC power of the inverter (e.g., 15000 for 15kW). Used for percentage calculations.", defaultValue = "15000")
