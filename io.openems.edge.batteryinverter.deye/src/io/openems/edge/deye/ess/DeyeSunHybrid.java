@@ -59,9 +59,11 @@ public interface DeyeSunHybrid extends // Implemented OpenEMS Natures:
 				.text("Device Serial Number. Read from Modbus registers 3-7.")), // Reg 3-7 [Source 13]
 
 		INVERTER_RUN_STATE(Doc.of(OpenemsType.INTEGER) //
-				.accessMode(AccessMode.READ_ONLY) // Read from Modbus only
-				.text("Inverter run state code. See Deye documentation for meaning. Read from Modbus register 500.")), // Reg 500 [Source 63]
-
+				.accessMode(AccessMode.READ_ONLY)
+				.text("Inverter run state code. See Deye documentation for meaning. Read from Modbus register 500.")),
+		RUN_STATE_TEXT(Doc.of(OpenemsType.STRING) //
+				.accessMode(AccessMode.READ_ONLY)
+				.text("Textdarstellung des Inverter Run State, basierend auf INVERTER_RUN_STATE")),
 		CT_RATIO(Doc.of(OpenemsType.INTEGER) //
 				.accessMode(AccessMode.READ_ONLY) // Read from Modbus only? Or Config? -> Check Deye Docs
 				.text("CT (Current Transformer) Ratio Setting. Read from Modbus register 347?")), // Reg 347 [Source 51] - Verify R/W and purpose

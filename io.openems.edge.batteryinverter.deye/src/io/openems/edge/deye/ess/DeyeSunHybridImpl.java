@@ -168,6 +168,8 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 		this.setupPowerLimitListeners();
 		this.setupPowerCombinerListeners();
 		this.setupStateChannelTriggers();
+		this.setupRunStateTextChannel();
+
 	}
 
 	@Override
@@ -926,6 +928,29 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 		// Run the logic once initially to set the starting value
 		updateTargetChannel.run();
 	}
+
+	private void setupRunStateTextChannel() {
+		// Channel für die RunState-Zahl (kommt von Modbus, z. B. 0 = OFF)
+		Channel<Integer> stateCodeChannel = this.channel(DeyeSunHybrid.ChannelId.INVERTER_RUN_STATE);
+		
+		// Channel für den lesbaren Text (z. B. "Running")
+		Channel<String> stateTextChannel = this.channel(DeyeSunHybrid.ChannelId.RUN_STATE_TEXT);
+
+		// Listener: Wenn sich der RunState ändert, Text ableiten und schreiben
+		stateCodeChannel.onUpdate(value -> {
+			Optional<Integer> codeOpt = value.asOptional();
+			String stateText = codeOpt.map(RunState::fromCode)  // Enum-Mapping
+					.map(RunState::toString)                    // lesbarer Text
+					.orElse("Unknown");
+			stateTextChannel.setNextValue(stateText);           // ✅ In String-Channel schreiben
+		});
+
+		// Direkt initialisieren, falls bereits ein Wert vorhanden ist
+		stateCodeChannel.value().ifPresent(code -> {
+			stateTextChannel.setNextValue(RunState.fromCode(code).toString());
+		});
+	}
+
 
 	/**
 	 * Gets the Modbus Unit-ID configured for this component.
