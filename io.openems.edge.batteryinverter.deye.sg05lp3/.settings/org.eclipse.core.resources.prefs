@@ -1,0 +1,9 @@
+eclipse.preferences.version=1
+encoding//src/io/openems/edge/batteryinverter/deye/sg05lp3/Config.java=UTF-8
+encoding//src/io/openems/edge/batteryinverter/deye/sg05lp3/DeyeSG05LP3.java=UTF-8
+encoding//src/io/openems/edge/batteryinverter/deye/sg05lp3/DeyeSG05LP3Impl.java=UTF-8
+encoding//test/io/openems/edge/batteryinverter/deye/sg05lp3/MyConfig.java=UTF-8
+encoding//test/io/openems/edge/batteryinverter/deye/sg05lp3/MyModbusDeviceTest.java=UTF-8
+encoding/<project>=UTF-8
+encoding/bnd.bnd=UTF-8
+encoding/readme.adoc=UTF-8
