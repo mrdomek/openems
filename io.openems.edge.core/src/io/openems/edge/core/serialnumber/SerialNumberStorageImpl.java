@@ -52,7 +52,7 @@ import io.openems.edge.common.serialnumber.SerialNumberStorage;
 public final class SerialNumberStorageImpl extends AbstractOpenemsComponent
 		implements OpenemsComponent, SerialNumberStorage {
 
-	private static final int UPDATE_CONFIG_HOURS_DELAY = 1;
+	private static final int UPDATE_CONFIG_MINUTES_DELAY = 10;
 
 	private final Logger log = LoggerFactory.getLogger(SerialNumberStorageImpl.class);
 
@@ -86,7 +86,8 @@ public final class SerialNumberStorageImpl extends AbstractOpenemsComponent
 
 		this.executor = Executors.newScheduledThreadPool(0, Thread.ofVirtual().name(SINGLETON_COMPONENT_ID).factory());
 
-		if (OpenemsComponent.validateSingleton(this.configurationAdmin, SINGLETON_SERVICE_PID, SINGLETON_COMPONENT_ID)) {
+		if (OpenemsComponent.validateSingleton(this.configurationAdmin, SINGLETON_SERVICE_PID,
+				SINGLETON_COMPONENT_ID)) {
 			return;
 		}
 	}
@@ -105,7 +106,8 @@ public final class SerialNumberStorageImpl extends AbstractOpenemsComponent
 		final var diff = ConfigDiff.between(prev, this.dataFromConfig);
 		diff.applyTo(this.data);
 
-		if (OpenemsComponent.validateSingleton(this.configurationAdmin, SINGLETON_SERVICE_PID, SINGLETON_COMPONENT_ID)) {
+		if (OpenemsComponent.validateSingleton(this.configurationAdmin, SINGLETON_SERVICE_PID,
+				SINGLETON_COMPONENT_ID)) {
 			return;
 		}
 	}
@@ -134,7 +136,7 @@ public final class SerialNumberStorageImpl extends AbstractOpenemsComponent
 			this.activeFuture.cancel(false);
 		}
 
-		this.activeFuture = this.executor.schedule(this::updateConfig, UPDATE_CONFIG_HOURS_DELAY, TimeUnit.HOURS);
+		this.activeFuture = this.executor.schedule(this::updateConfig, UPDATE_CONFIG_MINUTES_DELAY, TimeUnit.MINUTES);
 	}
 
 	private void updateConfig() {

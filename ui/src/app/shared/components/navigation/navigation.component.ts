@@ -1,6 +1,7 @@
-import { Component, effect, ViewChild } from "@angular/core";
+import { Component, effect, signal, ViewChild, WritableSignal } from "@angular/core";
 import { IonModal } from "@ionic/angular/common";
-import { NavigationService } from "./navigation.service";
+import { ModalBreakpointChangeEventDetail } from "@ionic/core";
+import { NavigationService } from "./service/navigation.service";
 import { NavigationTree } from "./shared";
 
 @Component({
@@ -9,30 +10,23 @@ import { NavigationTree } from "./shared";
     standalone: false,
 })
 export class NavigationComponent {
+    public static INITIAL_BREAKPOINT: number = 0.15;
+    public static breakPoint: WritableSignal<number> = signal(NavigationComponent.INITIAL_BREAKPOINT);
+
     @ViewChild("modal") private modal: IonModal | null = null;
 
-    protected initialBreakPoint: number = 0.2;
+    protected initialBreakPoint: number = NavigationComponent.INITIAL_BREAKPOINT;
     protected children: (NavigationTree | null)[] = [];
     protected parents: (NavigationTree | null)[] = [];
-    protected hasNavigationNodes: boolean = true;
+    protected isVisible: boolean = true;
 
     constructor(
         public navigationService: NavigationService,
     ) {
         effect(() => {
-            const currentNode = navigationService.currentNode();
-            this.children = currentNode?.getChildren() ?? [];
-
-            const parents: (NavigationTree | null)[] = [...currentNode?.getParents() ?? []];
-            if (parents.length >= 1) {
-                parents.push(currentNode);
-            }
-
-            this.parents = parents;
-            this.hasNavigationNodes = this.children.length > 0 || this.parents.length > 0;
+            this.isVisible = this.navigationService.position() === "bottom";
         });
     }
-
 
     /**
      * Navigates to passed link
@@ -41,7 +35,6 @@ export class NavigationComponent {
      * @returns
      */
     public async navigateTo(node: NavigationTree, shouldNavigate: boolean): Promise<void> {
-
         // Skip navigation for last breadcrumb
         if (!shouldNavigate) {
             return;
@@ -51,5 +44,9 @@ export class NavigationComponent {
             this.modal.setCurrentBreakpoint(this.initialBreakPoint);
         }
         this.navigationService.navigateTo(node);
+    }
+
+    protected onBreakpointDidChange(event: CustomEvent<ModalBreakpointChangeEventDetail>) {
+        NavigationComponent.breakPoint.set(event.detail.breakpoint);
     }
 }

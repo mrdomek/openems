@@ -1,23 +1,15 @@
 package io.openems.edge.evse.api.chargepoint;
 
-import static io.openems.common.utils.JsonUtils.buildJsonObject;
-import static io.openems.common.utils.JsonUtils.getAsBoolean;
-import static io.openems.common.utils.JsonUtils.getAsJsonObject;
-
-import com.google.common.collect.ImmutableList;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonNull;
-import com.google.gson.JsonObject;
-
-import io.openems.common.exceptions.OpenemsError.OpenemsNamedException;
+import io.openems.common.types.MeterType;
 import io.openems.common.types.OpenemsType;
 import io.openems.edge.common.channel.Channel;
 import io.openems.edge.common.channel.Doc;
 import io.openems.edge.common.channel.value.Value;
 import io.openems.edge.common.component.OpenemsComponent;
-import io.openems.edge.evse.api.Limit;
+import io.openems.edge.evse.api.chargepoint.Profile.ChargePointAbilities;
+import io.openems.edge.evse.api.chargepoint.Profile.ChargePointActions;
 import io.openems.edge.meter.api.ElectricityMeter;
+import io.openems.edge.meter.api.PhaseRotation;
 
 public interface EvseChargePoint extends ElectricityMeter, OpenemsComponent {
 
@@ -47,54 +39,19 @@ public interface EvseChargePoint extends ElectricityMeter, OpenemsComponent {
 		}
 	}
 
-	public record ChargeParams(boolean isReadyForCharging, Limit limit, ImmutableList<Profile> profiles) {
-
-		/**
-		 * Serialize.
-		 * 
-		 * @param cp the {@link ChargeParams}, possibly null
-		 * @return the {@link JsonElement}
-		 */
-		public static JsonElement toJson(ChargeParams cp) {
-			if (cp == null) {
-				return JsonNull.INSTANCE;
-			}
-			return buildJsonObject() //
-					.addProperty("isReadyForCharging", cp.isReadyForCharging) //
-					.add("limit", Limit.toJson(cp.limit)) //
-					.add("profiles", new JsonArray() /* TODO */) //
-					.build();
-		}
-
-		/**
-		 * Deserialize.
-		 * 
-		 * @param j a {@link JsonObject}
-		 * @return the {@link ChargeParams}
-		 * @throws OpenemsNamedException on error
-		 */
-		public static ChargeParams fromJson(JsonObject j) throws OpenemsNamedException {
-			return new ChargeParams(//
-					getAsBoolean(j, "isReadyForCharging"), //
-					Limit.fromJson(getAsJsonObject(j, "limit")), //
-					ImmutableList.of() /* TODO */);
-		}
-	}
+	/**
+	 * Gets the {@link ChargePointAbilities}.
+	 * 
+	 * @return the {@link ChargePointAbilities}
+	 */
+	public ChargePointAbilities getChargePointAbilities();
 
 	/**
-	 * Gets the {@link ChargeParams}.
+	 * Apply {@link ChargePointActions}.
 	 * 
-	 * @return list of {@link ChargeParams}s
+	 * @param actions the {@link ChargePointActions}
 	 */
-	public ChargeParams getChargeParams();
-
-	/**
-	 * Apply Current in [mA] and optionally {@link Profile.Command}s.
-	 * 
-	 * @param current         the Current in [mA]
-	 * @param profileCommands the {@link Profile.Command}s
-	 */
-	public void apply(int current, ImmutableList<Profile.Command> profileCommands);
+	public void apply(ChargePointActions actions);
 
 	/**
 	 * Is this Charge-Point installed according to standard or rotated wiring?. See
@@ -103,6 +60,26 @@ public interface EvseChargePoint extends ElectricityMeter, OpenemsComponent {
 	 * @return the {@link PhaseRotation}.
 	 */
 	public PhaseRotation getPhaseRotation();
+
+	/**
+	 * Is this {@link EvseChargePoint} read-only or read-write?.
+	 *
+	 * @return true for read-only
+	 */
+	public boolean isReadOnly();
+
+	/**
+	 * Gets the {@link MeterType} of an {@link EvseChargePoint}
+	 * {@link ElectricityMeter}.
+	 * 
+	 * @return the {@link MeterType}
+	 */
+	@Override
+	public default MeterType getMeterType() {
+		return this.isReadOnly() //
+				? MeterType.CONSUMPTION_METERED //
+				: MeterType.MANAGED_CONSUMPTION_METERED;
+	}
 
 	/**
 	 * Gets the Channel for {@link ChannelId#IS_READY_FOR_CHARGING}.

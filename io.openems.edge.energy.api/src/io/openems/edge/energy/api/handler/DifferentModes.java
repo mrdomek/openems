@@ -17,6 +17,7 @@ import io.openems.edge.common.component.OpenemsComponent;
 import io.openems.edge.energy.api.handler.EnergyScheduleHandler.Fitness;
 import io.openems.edge.energy.api.simulation.EnergyFlow;
 import io.openems.edge.energy.api.simulation.GlobalOptimizationContext;
+import io.openems.edge.energy.api.simulation.GlobalOptimizationContext.PeriodDuration;
 import io.openems.edge.energy.api.simulation.GlobalScheduleContext;
 
 /**
@@ -28,7 +29,6 @@ public class DifferentModes {
 	public static final class Builder<MODE, OPTIMIZATION_CONTEXT, SCHEDULE_CONTEXT> extends
 			AbstractEnergyScheduleHandler.Builder<Builder<MODE, OPTIMIZATION_CONTEXT, SCHEDULE_CONTEXT>, OPTIMIZATION_CONTEXT, SCHEDULE_CONTEXT> {
 
-		private MODE defaultMode;
 		private BiFunction<GlobalOptimizationContext, OPTIMIZATION_CONTEXT, MODE[]> availableModesFunction;
 		private InitialPopulationsProvider<MODE, OPTIMIZATION_CONTEXT> initialPopulationsProvider = InitialPopulationsProvider
 				.empty();
@@ -61,18 +61,10 @@ public class DifferentModes {
 		}
 
 		/**
-		 * Sets the default Mode if no other is explicitly scheduled.
-		 * 
-		 * @param mode a Mode
-		 * @return myself
-		 */
-		public Builder<MODE, OPTIMIZATION_CONTEXT, SCHEDULE_CONTEXT> setDefaultMode(MODE mode) {
-			this.defaultMode = mode;
-			return this;
-		}
-
-		/**
 		 * Sets a {@link Supplier} for available Modes.
+		 * 
+		 * <p>
+		 * First given Mode is used as default or fallback.
 		 * 
 		 * @param supplier a Modes supplier
 		 * @return myself
@@ -84,6 +76,9 @@ public class DifferentModes {
 
 		/**
 		 * Sets a {@link Function} for available Modes.
+		 * 
+		 * <p>
+		 * First given Mode is used as default or fallback.
 		 * 
 		 * @param function a Modes function
 		 * @return myself
@@ -139,7 +134,7 @@ public class DifferentModes {
 		public EshWithDifferentModes<MODE, OPTIMIZATION_CONTEXT, SCHEDULE_CONTEXT> build() {
 			return new EshWithDifferentModes<MODE, OPTIMIZATION_CONTEXT, SCHEDULE_CONTEXT>(//
 					this.parentFactoryPid, this.parentId, this.serializer, //
-					this.defaultMode, this.availableModesFunction, //
+					this.availableModesFunction, //
 					this.cocFunction, //
 					this.cscFunction, //
 					this.initialPopulationsProvider, //
@@ -195,6 +190,8 @@ public class DifferentModes {
 	}
 
 	public static record Period<MODE, OPTIMIZATION_CONTEXT>(
+			/** Duration of the Period */
+			PeriodDuration duration,
 			/** MODE of the Period */
 			MODE mode,
 			/** Price [1/MWh] */
@@ -209,7 +206,8 @@ public class DifferentModes {
 		/**
 		 * This class is only used internally to apply the Schedule.
 		 */
-		public static record Transition(int modeIndex, double price, EnergyFlow energyFlow, int essInitialEnergy) {
+		public static record Transition(PeriodDuration duration, int modeIndex, double price, EnergyFlow energyFlow,
+				int essInitialEnergy) {
 		}
 
 		/**
@@ -228,7 +226,7 @@ public class DifferentModes {
 		 */
 		public static <MODE, OPTIMIZATION_CONTEXT> Period<MODE, OPTIMIZATION_CONTEXT> fromTransitionRecord(
 				Period.Transition t, IntFunction<MODE> getMode, OPTIMIZATION_CONTEXT coc) {
-			return new Period<>(getMode.apply(t.modeIndex), t.price, coc, t.energyFlow, t.essInitialEnergy);
+			return new Period<>(t.duration, getMode.apply(t.modeIndex), t.price, coc, t.energyFlow, t.essInitialEnergy);
 		}
 	}
 

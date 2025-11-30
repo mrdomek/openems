@@ -51,7 +51,9 @@ public class TestFeneconCommercial92 {
 				.filter(t -> t.name.equals(SocomecMeter.Property.MODBUS_ID.name())) //
 				.findFirst().orElseThrow();
 
-		assertEquals("modbus3", modbusIdProperty.getDefaultValue(Language.DEFAULT).map(JsonElement::getAsString).orElseThrow());
+		assertEquals("modbus3", modbusIdProperty.getDefaultValue(Language.DEFAULT) //
+				.map(JsonElement::getAsString) //
+				.orElseThrow());
 	}
 
 	private void createFullCommercial92() throws Exception {
@@ -68,6 +70,7 @@ public class TestFeneconCommercial92 {
 	public static JsonObject fullSettings() {
 		return JsonUtils.buildJsonObject() //
 				.addProperty("SAFETY_COUNTRY", "GERMANY") //
+				.addProperty("GRID_CODE", "VDE_4105") //
 				.addProperty("FEED_IN_TYPE", "DYNAMIC_LIMITATION") //
 				.addProperty("MAX_FEED_IN_POWER", 1000) //
 				.addProperty("HAS_ESS_LIMITER_14A", false) //

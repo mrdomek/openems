@@ -164,16 +164,24 @@ public final class ModbusApiProps {
 	/**
 	 * Creates a {@link AppDef} to select Component Ids for ModbusApi.
 	 * 
-	 * @param <APP> the type of the {@link OpenemsApp}
+	 * @param <APP>         the type of the {@link OpenemsApp}
 	 * @param componentName the component name
+	 * @param essDefault    should storage systems be added to default
 	 * @return the {@link AppDef}
 	 */
 	public static <APP extends OpenemsApp & ComponentUtilSupplier & ComponentManagerSupplier> AppDef<APP, Nameable, BundleProvider> componentIds(
-			Nameable componentName) {
+			Nameable componentName, boolean essDefault) {
 		return AppDef.copyOfGeneric(ModbusApiProps.pickModbusIds(), def -> def //
 				.setDefaultValue((app, property, l, parameter) -> {
 					final var jsonArrayBuilder = JsonUtils.buildJsonArray() //
 							.add("_sum");
+
+					if (essDefault) {
+						// add ess ids
+						app.getComponentUtil().getEnabledComponentsOfStartingId("ess").stream() //
+								.sorted((o1, o2) -> o1.id().compareTo(o2.id())) //
+								.forEach(ess -> jsonArrayBuilder.add(ess.id()));
+					}
 
 					return jsonArrayBuilder.build();
 				}) //
