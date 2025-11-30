@@ -48,11 +48,12 @@ import io.openems.edge.common.event.EdgeEventConstants;
 import io.openems.edge.common.modbusslave.ModbusSlave;
 import io.openems.edge.common.modbusslave.ModbusSlaveNatureTable;
 import io.openems.edge.common.modbusslave.ModbusSlaveTable;
+import io.openems.edge.common.type.Phase;
+import io.openems.edge.common.type.Phase.SingleOrAllPhase;
 import io.openems.edge.common.taskmanager.Priority;
 import io.openems.edge.ess.api.ManagedSymmetricEss;
 import io.openems.edge.ess.api.SymmetricEss;
 import io.openems.edge.ess.power.api.Constraint;
-import io.openems.edge.ess.power.api.Phase;
 import io.openems.edge.ess.power.api.Power;
 import io.openems.edge.ess.power.api.Pwr;
 import io.openems.edge.ess.power.api.Relationship;
@@ -326,15 +327,15 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 	}
 
 	/**
-	 * Adds listeners to the low and high word channels of Active Power
-	 * to calculate and update the combined 32-bit ACTIVE_POWER channel
-	 * (using the standard SymmetricEss channel).
+	 * Kombiniert die Low-/High-Word-Register der Wirkleistung zu einem
+	 * 32-Bit-Wert und schreibt ihn in den Standard-ESS-Kanal
+	 * SymmetricEss.ACTIVE_POWER, damit UI, Solver und Energie-Berechnung
+	 * konsistent arbeiten.
 	 */
 	private void addActivePowerCombinerListener() {
 	    Channel<Integer> lowWordChannel  = this.channel(DeyeSunHybrid.ChannelId.ACTIVE_POWER_LOW_WORD);
 	    Channel<Integer> highWordChannel = this.channel(DeyeSunHybrid.ChannelId.ACTIVE_POWER_HIGH_WORD);
-	    //Channel<Integer> activePowerChannel = this.channel(SymmetricEss.ChannelId.ACTIVE_POWER);
-	    Channel<Integer> activePowerChannel = this.channel(SymmetricBatteryInverter.ChannelId.ACTIVE_POWER);
+	    Channel<Integer> activePowerChannel = this.channel(SymmetricEss.ChannelId.ACTIVE_POWER);
 
 	    Runnable updateActivePower = () -> {
 	        Optional<Integer> lowOpt  = lowWordChannel.value().asOptional();
@@ -345,10 +346,9 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 	                int high = highOpt.get();
 	                int low  = lowOpt.get();
 
-	                // 32-bit Kombi
+	                // 32-Bit Kombination aus zwei 16-Bit-Word-Registren
 	                int combinedValue = (high << 16) | (low & 0xFFFF);
 
-	                // DEBUG: Rohwerte loggen
 	                if (log.isDebugEnabled()) {
 	                    log.debug("Deye ACTIVE_POWER combine: highWord={}, lowWord={}, combined={}",
 	                            high, low, combinedValue);
@@ -373,6 +373,7 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 	    lowWordChannel.onUpdate(v  -> updateActivePower.run());
 	    highWordChannel.onUpdate(v -> updateActivePower.run());
 
+	    // initialer Lauf
 	    updateActivePower.run();
 	}
 
@@ -756,9 +757,9 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 		if (this.config.readOnlyMode()) {
 			return new Constraint[] { //
 					// Active power must be 0
-					this.createPowerConstraint("Read-Only-Mode", Phase.ALL, Pwr.ACTIVE, Relationship.EQUALS, 0),
+					this.createPowerConstraint("Read-Only-Mode", Phase.SingleOrAllPhase.ALL, Pwr.ACTIVE, Relationship.EQUALS, 0),
 					// Reactive power must be 0
-					this.createPowerConstraint("Read-Only-Mode", Phase.ALL, Pwr.REACTIVE, Relationship.EQUALS, 0) //
+					this.createPowerConstraint("Read-Only-Mode", Phase.SingleOrAllPhase.ALL, Pwr.REACTIVE, Relationship.EQUALS, 0) //
 			};
 		}
 
@@ -770,13 +771,13 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 		// Define constraints based on configured limits
 		return new Constraint[] { //
 				// Active power discharge limit (max negative power)
-				this.createPowerConstraint("Deye Min Active Power", Phase.ALL, Pwr.ACTIVE, Relationship.GREATER_OR_EQUALS, -maxApparentPower),
+				this.createPowerConstraint("Deye Min Active Power", Phase.SingleOrAllPhase.ALL, Pwr.ACTIVE, Relationship.GREATER_OR_EQUALS, -maxApparentPower),
 				// Active power charge limit (max positive power)
-				this.createPowerConstraint("Deye Max Active Power", Phase.ALL, Pwr.ACTIVE, Relationship.LESS_OR_EQUALS, maxApparentPower),
+				this.createPowerConstraint("Deye Max Active Power", Phase.SingleOrAllPhase.ALL, Pwr.ACTIVE, Relationship.LESS_OR_EQUALS, maxApparentPower),
 				// Min reactive power limit
-				this.createPowerConstraint("Deye Min Reactive Power", Phase.ALL, Pwr.REACTIVE, Relationship.GREATER_OR_EQUALS, minReactive),
+				this.createPowerConstraint("Deye Min Reactive Power", Phase.SingleOrAllPhase.ALL, Pwr.REACTIVE, Relationship.GREATER_OR_EQUALS, minReactive),
 				// Max reactive power limit
-				this.createPowerConstraint("Deye Max Reactive Power", Phase.ALL, Pwr.REACTIVE, Relationship.LESS_OR_EQUALS, maxReactive) //
+				this.createPowerConstraint("Deye Max Reactive Power", Phase.SingleOrAllPhase.ALL, Pwr.REACTIVE, Relationship.LESS_OR_EQUALS, maxReactive) //
 		};
 	}
 
