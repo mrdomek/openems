@@ -26,6 +26,7 @@ import org.slf4j.LoggerFactory;
 import io.openems.common.channel.AccessMode;
 import io.openems.common.exceptions.OpenemsError.OpenemsNamedException;
 import io.openems.common.exceptions.OpenemsException;
+import io.openems.edge.batteryinverter.api.SymmetricBatteryInverter;
 // import io.openems.edge.common.type.TypeUtils; // Currently unused import
 import io.openems.edge.bridge.modbus.api.AbstractOpenemsModbusComponent;
 import io.openems.edge.bridge.modbus.api.BridgeModbus;
@@ -330,45 +331,51 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 	 * (using the standard SymmetricEss channel).
 	 */
 	private void addActivePowerCombinerListener() {
-		// Get references to the relevant channels
-		Channel<Integer> lowWordChannel = this.channel(DeyeSunHybrid.ChannelId.ACTIVE_POWER_LOW_WORD);
-		Channel<Integer> highWordChannel = this.channel(DeyeSunHybrid.ChannelId.ACTIVE_POWER_HIGH_WORD);
-		// Target is the standard OpenEMS channel for Active Power
-		Channel<Integer> activePowerChannel = this.channel(SymmetricEss.ChannelId.ACTIVE_POWER);
+	    Channel<Integer> lowWordChannel  = this.channel(DeyeSunHybrid.ChannelId.ACTIVE_POWER_LOW_WORD);
+	    Channel<Integer> highWordChannel = this.channel(DeyeSunHybrid.ChannelId.ACTIVE_POWER_HIGH_WORD);
+	    //Channel<Integer> activePowerChannel = this.channel(SymmetricEss.ChannelId.ACTIVE_POWER);
+	    Channel<Integer> activePowerChannel = this.channel(SymmetricBatteryInverter.ChannelId.ACTIVE_POWER);
 
-		// Define the logic to combine the words
-		Runnable updateActivePower = () -> {
-			Optional<Integer> lowOpt = lowWordChannel.value().asOptional();
-			Optional<Integer> highOpt = highWordChannel.value().asOptional();
+	    Runnable updateActivePower = () -> {
+	        Optional<Integer> lowOpt  = lowWordChannel.value().asOptional();
+	        Optional<Integer> highOpt = highWordChannel.value().asOptional();
 
-			if (lowOpt.isPresent() && highOpt.isPresent()) {
-				try {
-					// Combine High and Low Word (assuming SignedWordElement provides correct int)
-					// Unit is W (see Deye doc Reg 636/694)
-					int high = highOpt.get();
-					int low = lowOpt.get();
-					// Standard 32-bit combination from two 16-bit words
-					Integer combinedValue = (high << 16) | (low & 0xFFFF);
-					activePowerChannel.setNextValue(combinedValue); // Update the target channel
-				} catch (Exception e) {
-					// Log error if combination fails
-					log.error("Exception while combining active power words: H={}, L={}. Error: {}",
-							highOpt.orElse(null), lowOpt.orElse(null), e.getMessage(), e);
-					activePowerChannel.setNextValue(null); // Set target channel to undefined
-				}
-			} else {
-				// If either word is missing, set target channel to undefined
-				activePowerChannel.setNextValue(null);
-			}
-		};
+	        if (lowOpt.isPresent() && highOpt.isPresent()) {
+	            try {
+	                int high = highOpt.get();
+	                int low  = lowOpt.get();
 
-		// Register the update logic to run whenever the low or high word changes
-		lowWordChannel.onUpdate(value -> updateActivePower.run());
-		highWordChannel.onUpdate(value -> updateActivePower.run());
+	                // 32-bit Kombi
+	                int combinedValue = (high << 16) | (low & 0xFFFF);
 
-		// Run the logic once initially to set the starting value
-		updateActivePower.run();
+	                // DEBUG: Rohwerte loggen
+	                if (log.isDebugEnabled()) {
+	                    log.debug("Deye ACTIVE_POWER combine: highWord={}, lowWord={}, combined={}",
+	                            high, low, combinedValue);
+	                }
+
+	                activePowerChannel.setNextValue(combinedValue);
+
+	            } catch (Exception e) {
+	                log.error("Exception while combining active power words: H={}, L={}. Error: {}",
+	                        highOpt.orElse(null), lowOpt.orElse(null), e.getMessage(), e);
+	                activePowerChannel.setNextValue(null);
+	            }
+	        } else {
+	            if (log.isDebugEnabled()) {
+	                log.debug("Deye ACTIVE_POWER combine: missing word(s). highWordPresent={}, lowWordPresent={}",
+	                        highOpt.isPresent(), lowOpt.isPresent());
+	            }
+	            activePowerChannel.setNextValue(null);
+	        }
+	    };
+
+	    lowWordChannel.onUpdate(v  -> updateActivePower.run());
+	    highWordChannel.onUpdate(v -> updateActivePower.run());
+
+	    updateActivePower.run();
 	}
+
 
 	/**
 	 * Sets the Modbus bridge reference. Called by OSGi.
