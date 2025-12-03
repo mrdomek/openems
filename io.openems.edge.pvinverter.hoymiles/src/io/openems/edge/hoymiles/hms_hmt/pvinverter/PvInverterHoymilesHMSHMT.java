@@ -10,7 +10,7 @@ import io.openems.edge.common.modbusslave.ModbusSlave;
 import io.openems.edge.meter.api.ElectricityMeter;
 import io.openems.edge.pvinverter.api.ManagedSymmetricPvInverter;
 
-public interface PvInverterSmaSunnyTripower extends SunSpecPvInverter, ManagedSymmetricPvInverter, ElectricityMeter,
+public interface PvInverterHoymilesHMSHMT extends SunSpecPvInverter, ManagedSymmetricPvInverter, ElectricityMeter,
 		ModbusComponent, OpenemsComponent, EventHandler, ModbusSlave {
 
 	public enum ChannelId implements io.openems.edge.common.channel.ChannelId {
