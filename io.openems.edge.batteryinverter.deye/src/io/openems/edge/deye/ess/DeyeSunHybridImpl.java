@@ -494,7 +494,7 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 						// Unit: W, Signed
 						m(DeyeSunHybrid.ChannelId.ACTIVE_POWER_HIGH_WORD, new SignedWordElement(694)),
 						// Unit: VA, Signed
-						m(DeyeSunHybrid.ChannelId.APPARENT_POWER_HIGH_WORD, new SignedWordElement(695))),
+						m(DeyeSunHybrid.ChannelId.APPARENT_POWER_HIGH_WORD, new SignedWordElement(695)))//,
 
 				// TODO: Add Read Tasks for Error/Warning registers (e.g., 553, 555-558)
 				// to map the placeholder state channels (SystemErrorChannelId etc.)
@@ -502,6 +502,7 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 				// FC16: Write Multiple Registers tasks
 
 				// Write Active Power Setpoint (Register 1111)
+				/* Disable Modbusbug 
 				new FC16WriteRegistersTask(1111, // Address 1111
 						// Unit: 0.1% of nominal power, Signed
 						m(DeyeSunHybrid.ChannelId.SET_ACTIVE_POWER, new SignedWordElement(1111))),
@@ -510,6 +511,8 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 				new FC16WriteRegistersTask(1118, // Address 1118
 						// Unit: 0.1% of nominal power, Signed
 						m(DeyeSunHybrid.ChannelId.SET_REACTIVE_POWER, new SignedWordElement(1118)))
+						
+				*/
 
 				// Optional: Define Write Task for Work State (Register 80?) if needed explicitly
 				// Requires confirmation of register address and data type (Signed/Unsigned)
