@@ -53,29 +53,33 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractSunSpecPvInverter
     /*
      * Active SunSpec models that shall be read from the inverter.
      *
-     * This list is still based on the original SMA implementation and will be
-     * adapted to the exact Hoymiles SunSpec model set in a later step.
+     * According to the SunSpec certification for Hoymiles microinverters the
+     * following models are implemented: 1, 101, 103, 111, 113, 123.
+     *
+     *  - 1   : Common model
+     *  - 101 : Single-phase inverter (int)
+     *  - 103 : Three-phase inverter (int)
+     *  - 111 : Single-phase inverter (float)
+     *  - 113 : Three-phase inverter (float)
+     *  - 123 : Immediate controls (active power limit etc.)
+     *
+     * We register all of them here. The AbstractSunSpecPvInverter base class will
+     * automatically discover which models are actually present on the device and
+     * only create tasks for those.
      */
     private static final Map<SunSpecModel, Priority> ACTIVE_MODELS = ImmutableMap.<SunSpecModel, Priority>builder()
-            // common + basic inverter models
-            .put(DefaultSunSpecModel.S_1, Priority.LOW)
-            .put(DefaultSunSpecModel.S_101, Priority.LOW)
-            // reactive / power factor model
-            .put(DefaultSunSpecModel.S_103, Priority.HIGH)
-            // basic nameplate / settings
-            .put(DefaultSunSpecModel.S_120, Priority.LOW)
-            .put(DefaultSunSpecModel.S_121, Priority.LOW)
-            .put(DefaultSunSpecModel.S_122, Priority.LOW)
-            // immediate controls (active power limitation etc.)
-            .put(DefaultSunSpecModel.S_123, Priority.LOW)
-            // alternative model set (since 2023 in original SMA implementation)
-            .put(DefaultSunSpecModel.S_701, Priority.HIGH)
-            .put(DefaultSunSpecModel.S_702, Priority.LOW)
+            .put(DefaultSunSpecModel.S_1, Priority.LOW)   // Common
+            .put(DefaultSunSpecModel.S_101, Priority.HIGH) // Single-phase (int)
+            .put(DefaultSunSpecModel.S_103, Priority.HIGH) // Three-phase (int)
+            .put(DefaultSunSpecModel.S_111, Priority.HIGH) // Single-phase (float)
+            .put(DefaultSunSpecModel.S_113, Priority.HIGH) // Three-phase (float)
+            .put(DefaultSunSpecModel.S_123, Priority.HIGH) // Immediate controls
             .build();
 
     /*
-     * SunSpec "block" to start reading from. This value is forwarded to the
-     * AbstractSunSpecPvInverter base class.
+     * SunSpec "block" index to start reading from. This value is forwarded to the
+     * AbstractSunSpecPvInverter base class, which takes care of scanning the
+     * SunSpec header and model chain.
      */
     private static final int READ_FROM_MODBUS_BLOCK = 1;
 
@@ -104,9 +108,11 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractSunSpecPvInverter
     private void activate(ComponentContext context, Config config) throws OpenemsException {
         /*
          * Basic activation and channel setup are handled by the
-         * AbstractSunSpecPvInverter base class. Additional Hoymiles-specific logic
-         * (e.g. SetOutputPower handling, per-input channels) will be added in later
-         * steps.
+         * AbstractSunSpecPvInverter base class.
+         *
+         * Additional Hoymiles-specific logic (e.g. handling of useAsProductionMeter,
+         * SetOutputPower based on enableSetOutputPower, per-input channels using
+         * proprietary registers) will be added in later steps.
          */
         if (super.activate(context, //
                 config.id(), //
