@@ -4,10 +4,10 @@
 
 -resolve.effective: active
 
--runproperties:\
-	org.osgi.service.http.port=8080,\
-	felix.cm.dir=c:/openems/config,\
+-runproperties: \
+	felix.cm.dir=c:/openems/config-pvinverter_hoymiles,\
 	openems.data.dir=c:/openems/data,\
+	org.osgi.service.http.port=8080,\
 	org.apache.felix.eventadmin.Timeout=0,\
 	org.ops4j.pax.logging.DefaultServiceLog.level=INFO
 
