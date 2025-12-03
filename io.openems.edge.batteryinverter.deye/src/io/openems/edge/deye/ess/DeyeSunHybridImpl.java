@@ -27,7 +27,6 @@ import io.openems.common.channel.AccessMode;
 import io.openems.common.exceptions.OpenemsError.OpenemsNamedException;
 import io.openems.common.exceptions.OpenemsException;
 import io.openems.edge.batteryinverter.api.SymmetricBatteryInverter;
-// import io.openems.edge.common.type.TypeUtils; // Currently unused import
 import io.openems.edge.bridge.modbus.api.AbstractOpenemsModbusComponent;
 import io.openems.edge.bridge.modbus.api.BridgeModbus;
 import io.openems.edge.bridge.modbus.api.ModbusComponent;
@@ -171,7 +170,6 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 		this.setupPowerCombinerListeners();
 		this.setupStateChannelTriggers();
 		this.setupRunStateTextChannel();
-
 	}
 
 	@Override
@@ -205,7 +203,8 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 	 */
 	private void setupPowerLimitListeners() {
 		// Listener for charge power limit with hysteresis
-		IntegerReadChannel calculatedChargeLimitChannel = this.channel(DeyeSunHybrid.ChannelId.ORIGINAL_ALLOWED_CHARGE_POWER);
+		IntegerReadChannel calculatedChargeLimitChannel = this.channel(
+				DeyeSunHybrid.ChannelId.ORIGINAL_ALLOWED_CHARGE_POWER);
 		Channel<Integer> finalChargeLimitChannel = this.channel(ManagedSymmetricEss.ChannelId.ALLOWED_CHARGE_POWER);
 
 		calculatedChargeLimitChannel.onUpdate((value) -> {
@@ -235,8 +234,10 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 		});
 
 		// Listener for discharge power limit with hysteresis
-		IntegerReadChannel calculatedDischargeLimitChannel = this.channel(DeyeSunHybrid.ChannelId.ORIGINAL_ALLOWED_DISCHARGE_POWER);
-		Channel<Integer> finalDischargeLimitChannel = this.channel(ManagedSymmetricEss.ChannelId.ALLOWED_DISCHARGE_POWER);
+		IntegerReadChannel calculatedDischargeLimitChannel = this.channel(
+				DeyeSunHybrid.ChannelId.ORIGINAL_ALLOWED_DISCHARGE_POWER);
+		Channel<Integer> finalDischargeLimitChannel = this.channel(
+				ManagedSymmetricEss.ChannelId.ALLOWED_DISCHARGE_POWER);
 
 		calculatedDischargeLimitChannel.onUpdate((value) -> {
 			Optional<Integer> calculatedLimitOpt = value.asOptional();
@@ -276,13 +277,34 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 	private void setupStateChannelTriggers() {
 		// TODO: Replace placeholder source channels (e.g., SystemErrorChannelId.STATE_149)
 		// with actual channels mapped to Modbus bits once identified!
-		this.addStateChannelTrigger(DeyeSunHybrid.ChannelId.SYSTEM_ERROR, DeyeSunHybrid.SystemErrorChannelId.values());
+		this.addStateChannelTrigger(DeyeSunHybrid.ChannelId.SYSTEM_ERROR,
+				DeyeSunHybrid.SystemErrorChannelId.values());
 		this.addStateChannelTrigger(DeyeSunHybrid.ChannelId.INSUFFICIENT_GRID_PARAMTERS,
 				DeyeSunHybrid.InsufficientGridParametersChannelId.values());
 		this.addStateChannelTrigger(DeyeSunHybrid.ChannelId.POWER_DECREASE_CAUSED_BY_OVERTEMPERATURE,
 				DeyeSunHybrid.PowerDecreaseCausedByOvertemperatureChannelId.values());
 	}
 
+	/**
+	 * Leitet den Deye-RunState in einen OpenEMS-Fehler-State weiter,
+	 * damit die Ampel im UI reagiert.
+	 *
+	 * Aktuell: nur FAULT -> SYSTEM_ERROR = true, alles andere = false.
+	 * Kann später erweitert werden (z.B. ALARM als Warning).
+	 */
+	private void updateComponentStatesFromRunState(RunState runState) {
+		if (runState == null) {
+			return;
+		}
+
+		// Globaler Fehler-State für diese Komponente
+		StateChannel systemError = this.channel(DeyeSunHybrid.ChannelId.SYSTEM_ERROR);
+
+		boolean isFault = (runState == RunState.FAULT);
+		systemError.setNextValue(isFault);
+	}
+	
+	
 	/**
 	 * Adds listeners to the low and high word channels of Apparent Power
 	 * to calculate and update the combined 32-bit APPARENT_POWER channel.
@@ -333,50 +355,40 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 	 * konsistent arbeiten.
 	 */
 	private void addActivePowerCombinerListener() {
-	    Channel<Integer> lowWordChannel  = this.channel(DeyeSunHybrid.ChannelId.ACTIVE_POWER_LOW_WORD);
-	    Channel<Integer> highWordChannel = this.channel(DeyeSunHybrid.ChannelId.ACTIVE_POWER_HIGH_WORD);
-	    Channel<Integer> activePowerChannel = this.channel(SymmetricEss.ChannelId.ACTIVE_POWER);
+		Channel<Integer> lowWordChannel = this.channel(DeyeSunHybrid.ChannelId.ACTIVE_POWER_LOW_WORD);
+		Channel<Integer> highWordChannel = this.channel(DeyeSunHybrid.ChannelId.ACTIVE_POWER_HIGH_WORD);
+		Channel<Integer> activePowerChannel = this.channel(SymmetricEss.ChannelId.ACTIVE_POWER);
 
-	    Runnable updateActivePower = () -> {
-	        Optional<Integer> lowOpt  = lowWordChannel.value().asOptional();
-	        Optional<Integer> highOpt = highWordChannel.value().asOptional();
+		Runnable updateActivePower = () -> {
+			Optional<Integer> lowOpt = lowWordChannel.value().asOptional();
+			Optional<Integer> highOpt = highWordChannel.value().asOptional();
 
-	        if (lowOpt.isPresent() && highOpt.isPresent()) {
-	            try {
-	                int high = highOpt.get();
-	                int low  = lowOpt.get();
+			if (lowOpt.isPresent() && highOpt.isPresent()) {
+				try {
+					int high = highOpt.get();
+					int low = lowOpt.get();
 
-	                // 32-Bit Kombination aus zwei 16-Bit-Word-Registren
-	                int combinedValue = (high << 16) | (low & 0xFFFF);
+					// 32-Bit Kombination aus zwei 16-Bit-Word-Registren
+					int combinedValue = (high << 16) | (low & 0xFFFF);
 
-	                if (log.isDebugEnabled()) {
-	                    log.debug("Deye ACTIVE_POWER combine: highWord={}, lowWord={}, combined={}",
-	                            high, low, combinedValue);
-	                }
+					activePowerChannel.setNextValue(combinedValue);
 
-	                activePowerChannel.setNextValue(combinedValue);
+				} catch (Exception e) {
+					log.error("Exception while combining active power words: H={}, L={}. Error: {}",
+							highOpt.orElse(null), lowOpt.orElse(null), e.getMessage(), e);
+					activePowerChannel.setNextValue(null);
+				}
+			} else {
+				activePowerChannel.setNextValue(null);
+			}
+		};
 
-	            } catch (Exception e) {
-	                log.error("Exception while combining active power words: H={}, L={}. Error: {}",
-	                        highOpt.orElse(null), lowOpt.orElse(null), e.getMessage(), e);
-	                activePowerChannel.setNextValue(null);
-	            }
-	        } else {
-	            if (log.isDebugEnabled()) {
-	                log.debug("Deye ACTIVE_POWER combine: missing word(s). highWordPresent={}, lowWordPresent={}",
-	                        highOpt.isPresent(), lowOpt.isPresent());
-	            }
-	            activePowerChannel.setNextValue(null);
-	        }
-	    };
+		lowWordChannel.onUpdate(v -> updateActivePower.run());
+		highWordChannel.onUpdate(v -> updateActivePower.run());
 
-	    lowWordChannel.onUpdate(v  -> updateActivePower.run());
-	    highWordChannel.onUpdate(v -> updateActivePower.run());
-
-	    // initialer Lauf
-	    updateActivePower.run();
+		// initialer Lauf
+		updateActivePower.run();
 	}
-
 
 	/**
 	 * Sets the Modbus bridge reference. Called by OSGi.
@@ -393,7 +405,8 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 	 * Converts absolute power values (W, var) to scaled percentage values (0.1%)
 	 * required by the Deye Modbus registers.
 	 *
-	 * @param activePower   Active power setpoint in W (negative for discharge, positive for charge)
+	 * @param activePower   Active power setpoint in W (negative for discharge,
+	 *                      positive for charge)
 	 * @param reactivePower Reactive power setpoint in var
 	 * @throws OpenemsNamedException if applying power fails
 	 */
@@ -420,7 +433,8 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 		int activePowerPercentScaled = (int) Math.round(activePower / divisor);
 		int reactivePowerPercentScaled = (int) Math.round(reactivePower / divisor);
 
-		// Clamp scaled setpoints to allowed Modbus register range (e.g., -120.0% to +120.0%)
+		// Clamp scaled setpoints to allowed Modbus register range (e.g., -120.0% to
+		// +120.0%)
 		activePowerPercentScaled = Math.max(MIN_ACTIVE_POWER_SETPOINT_SCALED,
 				Math.min(MAX_ACTIVE_POWER_SETPOINT_SCALED, activePowerPercentScaled));
 		reactivePowerPercentScaled = Math.max(MIN_REACTIVE_POWER_SETPOINT_SCALED,
@@ -453,7 +467,8 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 	 */
 	@Override
 	protected ModbusProtocol defineModbusProtocol() {
-		// Note: Register addresses and types based on Deye documentation/reverse engineering.
+		// Note: Register addresses and types based on Deye documentation/reverse
+		// engineering.
 		// Verify against specific Deye model and firmware version.
 		return new ModbusProtocol(this,
 				// FC3: Read Holding Registers tasks
@@ -494,87 +509,130 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 						// Unit: W, Signed
 						m(DeyeSunHybrid.ChannelId.ACTIVE_POWER_HIGH_WORD, new SignedWordElement(694)),
 						// Unit: VA, Signed
-						m(DeyeSunHybrid.ChannelId.APPARENT_POWER_HIGH_WORD, new SignedWordElement(695)))//,
+						m(DeyeSunHybrid.ChannelId.APPARENT_POWER_HIGH_WORD, new SignedWordElement(695)))// ,
 
-				// TODO: Add Read Tasks for Error/Warning registers (e.g., 553, 555-558)
-				// to map the placeholder state channels (SystemErrorChannelId etc.)
+		// TODO: Add Read Tasks for Error/Warning registers (e.g., 553, 555-558)
+		// to map the placeholder state channels (SystemErrorChannelId etc.)
 
-				// FC16: Write Multiple Registers tasks
+		// FC16: Write Multiple Registers tasks
 
-				// Write Active Power Setpoint (Register 1111)
-				/* Disable Modbusbug 
-				new FC16WriteRegistersTask(1111, // Address 1111
-						// Unit: 0.1% of nominal power, Signed
-						m(DeyeSunHybrid.ChannelId.SET_ACTIVE_POWER, new SignedWordElement(1111))),
+		// Write Active Power Setpoint (Register 1111)
+		/*
+		 * Disable Modbusbug new FC16WriteRegistersTask(1111, // Address 1111 // Unit:
+		 * 0.1% of nominal power, Signed m(DeyeSunHybrid.ChannelId.SET_ACTIVE_POWER,
+		 * new SignedWordElement(1111))),
+		 *
+		 * // Write Reactive Power Setpoint (Register 1118) new
+		 * FC16WriteRegistersTask(1118, // Address 1118 // Unit: 0.1% of nominal power,
+		 * Signed m(DeyeSunHybrid.ChannelId.SET_REACTIVE_POWER, new
+		 * SignedWordElement(1118)))
+		 */
 
-				// Write Reactive Power Setpoint (Register 1118)
-				new FC16WriteRegistersTask(1118, // Address 1118
-						// Unit: 0.1% of nominal power, Signed
-						m(DeyeSunHybrid.ChannelId.SET_REACTIVE_POWER, new SignedWordElement(1118)))
-						
-				*/
-
-				// Optional: Define Write Task for Work State (Register 80?) if needed explicitly
-				// Requires confirmation of register address and data type (Signed/Unsigned)
-				/*
-				 * new FC16WriteRegistersTask(80, // Example address, VERIFY!
-				 * m(DeyeSunHybrid.ChannelId.SET_WORK_STATE, new UnsignedWordElement(80))) // Type VERIFY!
-				 */
+		// Optional: Define Write Task for Work State (Register 80?) if needed explicitly
+		// Requires confirmation of register address and data type (Signed/Unsigned)
+		/*
+		 * new FC16WriteRegistersTask(80, // Example address, VERIFY!
+		 * m(DeyeSunHybrid.ChannelId.SET_WORK_STATE, new UnsignedWordElement(80))) //
+		 * Type VERIFY!
+		 */
 		);
 	}
 
 	/**
-	 * Provides a string representation of the component's current state for debugging.
+	 * Provides a string representation of the component's current state for
+	 * debugging.
 	 *
 	 * @return A debug string.
 	 */
 	@Override
 	public String debugLog() {
-		// SoC (State of Charge)
-		String soc = this.getSoc().asOptional().map(s -> s + "%").orElse("N/A");
+		// 1) Generischer Komponenten-State (Ok/Warning/Fault/...)
+		//    -> dieser State bestimmt auch die Ampel/_sum.
+		Channel<?> stateChannel = this.channel(OpenemsComponent.ChannelId.STATE);
+		String componentState = stateChannel.value()
+				.asOptional()
+				.map(Object::toString)
+				.orElse("UNDEFINED");
 
-		// Active Power (L - Leistung) - Read from the standard channel updated by the listener
-		String activePower = this.getActivePower().asOptional().map(p -> p + "W").orElse("N/A");
+		// 2) Deye-RunState-Text (aus RUN_STATE_TEXT, basiert auf Register 500)
+		Channel<String> runStateTextChannel = this.channel(DeyeSunHybrid.ChannelId.RUN_STATE_TEXT);
+		String runStateText = runStateTextChannel.value()
+				.asOptional()
+				.orElse("Unknown");
 
-		// Apparent Power (S - Scheinleistung) - Read from the channel updated by the listener
-		String apparentPower = this.channel(DeyeSunHybrid.ChannelId.APPARENT_POWER).value().asOptional()
-				.map(s -> s + "VA").orElse("N/A");
+		// 3) SoC (State of Charge)
+		String soc = this.getSoc().asOptional()
+				.map(s -> s + "%")
+				.orElse("N/A");
 
-		// Battery Voltage (V) - Read from the scaled channel
-		String voltage = this.channel(DeyeSunHybrid.ChannelId.BATTERY_VOLTAGE).value().asOptional()
-				.map(v -> String.format("%.1fV", v)).orElse("N/A");
+		// 4) Aktive Leistung (W) - Standard-ESS-Kanal
+		String activePower = this.getActivePower().asOptional()
+				.map(p -> p + "W")
+				.orElse("N/A");
 
-		// Original Allowed Power Limits (calculated before hysteresis/override)
-		String origCharge = this.channel(DeyeSunHybrid.ChannelId.ORIGINAL_ALLOWED_CHARGE_POWER).value().asOptional()
-				.map(String::valueOf).orElse("N/A");
+		// 5) Scheinleistung (VA) - zusammengeführter 32-Bit-Kanal
+		String apparentPower = this.channel(DeyeSunHybrid.ChannelId.APPARENT_POWER).value()
+				.asOptional()
+				.map(s -> s + "VA")
+				.orElse("N/A");
+
+		// 6) Batteriespannung (V) - skalierter Channel
+		String voltage = this.channel(DeyeSunHybrid.ChannelId.BATTERY_VOLTAGE).value()
+				.asOptional()
+				.map(v -> String.format("%.1fV", v))
+				.orElse("N/A");
+
+		// 7) Originale erlaubte Leistungsgrenzen (vor Hysterese)
+		String origCharge = this.channel(DeyeSunHybrid.ChannelId.ORIGINAL_ALLOWED_CHARGE_POWER).value()
+				.asOptional()
+				.map(String::valueOf)
+				.orElse("N/A");
+
 		String origDischarge = this.channel(DeyeSunHybrid.ChannelId.ORIGINAL_ALLOWED_DISCHARGE_POWER).value()
-				.asOptional().map(String::valueOf).orElse("N/A");
+				.asOptional()
+				.map(String::valueOf)
+				.orElse("N/A");
 
-		// Final Allowed Power Limits (after hysteresis/override)
-		String finalCharge = this.getAllowedChargePower().asOptional().map(String::valueOf).orElse("N/A");
-		String finalDischarge = this.getAllowedDischargePower().asOptional().map(String::valueOf).orElse("N/A");
+		// 8) Finale erlaubte Leistungsgrenzen (nach Hysterese/Override)
+		String finalCharge = this.getAllowedChargePower().asOptional()
+				.map(String::valueOf)
+				.orElse("N/A");
 
-		// Next values to be written via Modbus (scaled 0.1% values)
+		String finalDischarge = this.getAllowedDischargePower().asOptional()
+				.map(String::valueOf)
+				.orElse("N/A");
+
+		// 9) Nächste zu schreibende 0,1%-Sollwerte (P/Q)
 		String nextWriteActivePercent = "N/A";
 		String nextWriteReactivePercent = "N/A";
 		try {
 			IntegerWriteChannel setActivePowerChannel = this.channel(DeyeSunHybrid.ChannelId.SET_ACTIVE_POWER);
-			nextWriteActivePercent = setActivePowerChannel.getNextWriteValue().map(String::valueOf).orElse("N/A");
+			nextWriteActivePercent = setActivePowerChannel.getNextWriteValue()
+					.map(String::valueOf)
+					.orElse("N/A");
 
 			IntegerWriteChannel setReactivePowerChannel = this.channel(DeyeSunHybrid.ChannelId.SET_REACTIVE_POWER);
-			nextWriteReactivePercent = setReactivePowerChannel.getNextWriteValue().map(String::valueOf).orElse("N/A");
+			nextWriteReactivePercent = setReactivePowerChannel.getNextWriteValue()
+					.map(String::valueOf)
+					.orElse("N/A");
 		} catch (ClassCastException e) {
-			// Should not happen if channels are defined correctly
+			// Sollte nicht vorkommen, solange die Channels korrekt als IntegerWriteChannel
+			// definiert sind.
 			log.warn("Unable to cast SET_ACTIVE/REACTIVE_POWER to IntegerWriteChannel in debugLog", e);
 		}
 
-		// Format the final debug string
-		return "SoC:" + soc + "|L:" + activePower + "|S:" + apparentPower //
+		// 10) Finale Log-Zeile
+		return "State:" + componentState //
+				+ "|RunState:" + runStateText //
+				+ "|SoC:" + soc //
+				+ "|L:" + activePower //
+				+ "|S:" + apparentPower //
 				+ "|V:" + voltage //
 				+ "|Allowed(Orig):[Chg:" + origCharge + ";Dschg:" + origDischarge + "]" //
 				+ "|Allowed(Final):[Chg:" + finalCharge + ";Dschg:" + finalDischarge + "] W" //
 				+ "|NextWrite(0.1%):[P:" + nextWriteActivePercent + ";Q:" + nextWriteReactivePercent + "]";
 	}
+
 
 	/**
 	 * Handles events based on subscribed topics.
@@ -594,66 +652,40 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 		case EdgeEventConstants.TOPIC_CYCLE_AFTER_PROCESS_IMAGE:
 			// After Modbus data has been read and channels updated
 			this.calculateAndUpdatePowerLimits(); // Calculate limits based on voltage/current
-			this.applyPowerLimitOnOvertemperatureError(); // Apply overrides if needed
 			this.calculateEnergy(); // Calculate accumulated AC energy
 			break;
 
 		case EdgeEventConstants.TOPIC_CYCLE_BEFORE_CONTROLLERS:
 			// Before controllers run (e.g., ESS balancing controller)
-			this.defineWorkState(); // Periodically send START command if required
+			// (defineWorkState() entfernt, da derzeit ohne effektives Register-Mapping)
 			break;
 		}
 	}
 
-	private LocalDateTime lastDefineWorkState = null;
+	private LocalDateTime lastDefineWorkState = null; // aktuell ungenutzt; kann bei nächster Aufräumrunde mit raus
 
 	/**
-	 * Periodically sends the START command (WorkState = 0) to the inverter.
-	 * This might be required by some Deye firmware versions to keep the device
-	 * accepting commands or operational. Needs verification based on device behavior.
-	 */
-	private void defineWorkState() {
-		// Only run if not in read-only mode
-		if (this.config != null && this.config.readOnlyMode()) {
-			return;
-		}
-
-		var now = LocalDateTime.now();
-		// Send command only once per minute to avoid excessive Modbus traffic
-		if (this.lastDefineWorkState == null || now.minusMinutes(1).isAfter(this.lastDefineWorkState)) {
-			this.lastDefineWorkState = now;
-
-			try {
-				// Get the write channel for the work state
-				IntegerWriteChannel setWorkStateChannel = this.channel(DeyeSunHybrid.ChannelId.SET_WORK_STATE);
-				// Value '0' corresponds to 'START' in the SetWorkState enum (ordinal)
-				int valueToWrite = SetWorkState.START.ordinal();
-				log.debug("Periodically setting WorkState to [" + valueToWrite + "] (START)");
-				// Set the value to be written in the next Modbus write cycle
-				setWorkStateChannel.setNextWriteValue(valueToWrite);
-			} catch (OpenemsNamedException e) {
-				// Log error if channel access fails
-				log.error("Unable to get Channel SET_WORK_STATE: " + e.getMessage());
-			}
-		}
-	}
-
-	/**
-	 * Calculates power limits based on raw voltage and current limit readings from Modbus.
-	 * Updates the corresponding ORIGINAL_ALLOWED_CHARGE/DISCHARGE_POWER channels and
+	 * Calculates power limits based on raw voltage and current limit readings from
+	 * Modbus.
+	 * Updates the corresponding ORIGINAL_ALLOWED_CHARGE/DISCHARGE_POWER channels
+	 * and
 	 * the scaled BATTERY_VOLTAGE channel.
 	 */
 	private void calculateAndUpdatePowerLimits() {
 		try {
 			// Get necessary read channels
 			IntegerReadChannel batteryVoltageRawChannel = this.channel(DeyeSunHybrid.ChannelId.BATTERY_VOLTAGE_RAW);
-			IntegerReadChannel chargeCurrentLimitChannel = this.channel(DeyeSunHybrid.ChannelId.RAW_CHARGE_CURRENT_LIMIT);
-			IntegerReadChannel dischargeCurrentLimitChannel = this.channel(DeyeSunHybrid.ChannelId.RAW_DISCHARGE_CURRENT_LIMIT);
+			IntegerReadChannel chargeCurrentLimitChannel = this.channel(
+					DeyeSunHybrid.ChannelId.RAW_CHARGE_CURRENT_LIMIT);
+			IntegerReadChannel dischargeCurrentLimitChannel = this
+					.channel(DeyeSunHybrid.ChannelId.RAW_DISCHARGE_CURRENT_LIMIT);
 
 			// Get target write/update channels
 			Channel<Float> batteryVoltageScaledChannel = this.channel(DeyeSunHybrid.ChannelId.BATTERY_VOLTAGE);
-			Channel<Integer> originalAllowedChargePowerChannel = this.channel(DeyeSunHybrid.ChannelId.ORIGINAL_ALLOWED_CHARGE_POWER);
-			Channel<Integer> originalAllowedDischargePowerChannel = this.channel(DeyeSunHybrid.ChannelId.ORIGINAL_ALLOWED_DISCHARGE_POWER);
+			Channel<Integer> originalAllowedChargePowerChannel = this
+					.channel(DeyeSunHybrid.ChannelId.ORIGINAL_ALLOWED_CHARGE_POWER);
+			Channel<Integer> originalAllowedDischargePowerChannel = this
+					.channel(DeyeSunHybrid.ChannelId.ORIGINAL_ALLOWED_DISCHARGE_POWER);
 
 			// Read optional values from channels
 			Optional<Integer> batteryVoltageRawOpt = batteryVoltageRawChannel.value().asOptional();
@@ -697,7 +729,8 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 				this.channel(DeyeSunHybrid.ChannelId.ORIGINAL_ALLOWED_DISCHARGE_POWER).setNextValue(0);
 			} catch (Exception ex) {
 				// Log error if resetting channels also fails
-				log.error("Error setting default values after exception in calculateAndUpdatePowerLimits: " + ex.getMessage(), ex);
+				log.error("Error setting default values after exception in calculateAndUpdatePowerLimits: "
+						+ ex.getMessage(), ex);
 			}
 		}
 	}
@@ -760,9 +793,11 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 		if (this.config.readOnlyMode()) {
 			return new Constraint[] { //
 					// Active power must be 0
-					this.createPowerConstraint("Read-Only-Mode", Phase.SingleOrAllPhase.ALL, Pwr.ACTIVE, Relationship.EQUALS, 0),
+					this.createPowerConstraint("Read-Only-Mode", Phase.SingleOrAllPhase.ALL, Pwr.ACTIVE,
+							Relationship.EQUALS, 0),
 					// Reactive power must be 0
-					this.createPowerConstraint("Read-Only-Mode", Phase.SingleOrAllPhase.ALL, Pwr.REACTIVE, Relationship.EQUALS, 0) //
+					this.createPowerConstraint("Read-Only-Mode", Phase.SingleOrAllPhase.ALL, Pwr.REACTIVE,
+							Relationship.EQUALS, 0) //
 			};
 		}
 
@@ -774,13 +809,17 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 		// Define constraints based on configured limits
 		return new Constraint[] { //
 				// Active power discharge limit (max negative power)
-				this.createPowerConstraint("Deye Min Active Power", Phase.SingleOrAllPhase.ALL, Pwr.ACTIVE, Relationship.GREATER_OR_EQUALS, -maxApparentPower),
+				this.createPowerConstraint("Deye Min Active Power", Phase.SingleOrAllPhase.ALL, Pwr.ACTIVE,
+						Relationship.GREATER_OR_EQUALS, -maxApparentPower),
 				// Active power charge limit (max positive power)
-				this.createPowerConstraint("Deye Max Active Power", Phase.SingleOrAllPhase.ALL, Pwr.ACTIVE, Relationship.LESS_OR_EQUALS, maxApparentPower),
+				this.createPowerConstraint("Deye Max Active Power", Phase.SingleOrAllPhase.ALL, Pwr.ACTIVE,
+						Relationship.LESS_OR_EQUALS, maxApparentPower),
 				// Min reactive power limit
-				this.createPowerConstraint("Deye Min Reactive Power", Phase.SingleOrAllPhase.ALL, Pwr.REACTIVE, Relationship.GREATER_OR_EQUALS, minReactive),
+				this.createPowerConstraint("Deye Min Reactive Power", Phase.SingleOrAllPhase.ALL, Pwr.REACTIVE,
+						Relationship.GREATER_OR_EQUALS, minReactive),
 				// Max reactive power limit
-				this.createPowerConstraint("Deye Max Reactive Power", Phase.SingleOrAllPhase.ALL, Pwr.REACTIVE, Relationship.LESS_OR_EQUALS, maxReactive) //
+				this.createPowerConstraint("Deye Max Reactive Power", Phase.SingleOrAllPhase.ALL, Pwr.REACTIVE,
+						Relationship.LESS_OR_EQUALS, maxReactive) //
 		};
 	}
 
@@ -802,49 +841,6 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 						// TODO: Add specific channel mappings here if needed
 						.build() //
 		);
-	}
-
-	// --- Logging Wrappers (inherited logX methods add component ID) ---
-	@Override
-	protected void logInfo(Logger log, String message) {
-		super.logInfo(log, message);
-	}
-
-	@Override
-	protected void logWarn(Logger log, String message) {
-		super.logWarn(log, message);
-	}
-
-	@Override
-	protected void logError(Logger log, String message) {
-		super.logError(log, message);
-	}
-	// --- End Logging Wrappers ---
-
-	/**
-	 * Applies a strict power limit if an overtemperature condition is detected
-	 * and a specific limit is configured. Overrides existing calculated limits.
-	 */
-	private void applyPowerLimitOnOvertemperatureError() {
-		// Check if the feature is configured
-		if (this.config != null && this.config.powerLimitOnOvertemperatureW() > 0) {
-			// Get the specific error state channel
-			// TODO: This channel needs to be correctly mapped to the actual Modbus bit!
-			StateChannel errorChannel = this.channel(DeyeSunHybrid.ChannelId.POWER_DECREASE_CAUSED_BY_OVERTEMPERATURE);
-
-			// Check if the error state is active (value is true)
-			if (errorChannel.value().orElse(false)) {
-				// Get the configured limit (absolute value)
-				int limit = Math.abs(this.config.powerLimitOnOvertemperatureW());
-				this.logWarn(this.log, String.format(
-						"[%s] Overtemperature constraint active! OVERRIDING AllowedCharge to %d W / Discharge to %d W using configured limit.",
-						this.id(), -limit, limit));
-
-				// Directly set the final allowed power limits, overriding hysteresis logic
-				this._setAllowedChargePower(-limit);
-				this._setAllowedDischargePower(limit);
-			}
-		}
 	}
 
 	/**
@@ -881,10 +877,6 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 			this.calculateAcChargeEnergy.update(null);
 			this.calculateAcDischargeEnergy.update(null);
 		}
-
-		// DC Energy calculation removed
-		// Optional<Integer> dcPowerOpt = Optional.empty(); // Placeholder removed
-		// ... logic for DC energy removed ...
 	}
 
 	/**
@@ -892,8 +884,9 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 	 * the state of multiple source Boolean channels. The target channel becomes
 	 * true if any of the source channels are true.
 	 *
-	 * @param targetChannelId The ID of the target StateChannel to update.
-	 * @param sourceChannelIds An array of Channel IDs for the source Boolean channels.
+	 * @param targetChannelId  The ID of the target StateChannel to update.
+	 * @param sourceChannelIds An array of Channel IDs for the source Boolean
+	 *                         channels.
 	 */
 	private void addStateChannelTrigger(io.openems.edge.common.channel.ChannelId targetChannelId,
 			io.openems.edge.common.channel.ChannelId[] sourceChannelIds) {
@@ -918,14 +911,16 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 
 		// Check if any valid source channels were found
 		if (sourceChannels.isEmpty()) {
-			this.logWarn(log, "No valid source channels found for target [" + targetChannelId.id() + "]. Setting to false.");
+			this.logWarn(log,
+					"No valid source channels found for target [" + targetChannelId.id() + "]. Setting to false.");
 			targetChannel.setNextValue(false); // Set target to false if no sources
 			return;
 		}
 
 		// Define the logic to update the target channel
 		Runnable updateTargetChannel = () -> {
-			// Check if any source channel's value is true (defaulting to false if null/missing)
+			// Check if any source channel's value is true (defaulting to false if
+			// null/missing)
 			boolean isAnySourceTrue = sourceChannels.stream().anyMatch(ch -> ch.value().orElse(false));
 			// Update the target channel
 			targetChannel.setNextValue(isAnySourceTrue);
@@ -941,27 +936,34 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 	}
 
 	private void setupRunStateTextChannel() {
-		// Channel für die RunState-Zahl (kommt von Modbus, z. B. 0 = OFF)
+		// Channel für die RunState-Zahl (kommt von Modbus, z. B. 0 = standby)
 		Channel<Integer> stateCodeChannel = this.channel(DeyeSunHybrid.ChannelId.INVERTER_RUN_STATE);
-		
-		// Channel für den lesbaren Text (z. B. "Running")
+
+		// Channel für den lesbaren Text (z. B. "normal")
 		Channel<String> stateTextChannel = this.channel(DeyeSunHybrid.ChannelId.RUN_STATE_TEXT);
 
-		// Listener: Wenn sich der RunState ändert, Text ableiten und schreiben
+		// Listener: Wenn sich der RunState ändert, Text ableiten und Fehler-State setzen
 		stateCodeChannel.onUpdate(value -> {
 			Optional<Integer> codeOpt = value.asOptional();
-			String stateText = codeOpt.map(RunState::fromCode)  // Enum-Mapping
-					.map(RunState::toString)                    // lesbarer Text
-					.orElse("Unknown");
-			stateTextChannel.setNextValue(stateText);           // ✅ In String-Channel schreiben
+
+			RunState runState = codeOpt
+					.map(RunState::fromCode)
+					.orElse(RunState.UNKNOWN);
+
+			// Text in String-Channel schreiben
+			stateTextChannel.setNextValue(runState.toString());
+
+			// Fehler-/Ampel-State anhand des RunState setzen
+			updateComponentStatesFromRunState(runState);
 		});
 
-		// Direkt initialisieren, falls bereits ein Wert vorhanden ist
+		// Direkt initialisieren, falls beim Start schon ein Wert vorhanden ist
 		stateCodeChannel.value().ifPresent(code -> {
-			stateTextChannel.setNextValue(RunState.fromCode(code).toString());
+			RunState runState = RunState.fromCode(code);
+			stateTextChannel.setNextValue(runState.toString());
+			updateComponentStatesFromRunState(runState);
 		});
 	}
-
 
 	/**
 	 * Gets the Modbus Unit-ID configured for this component.
@@ -970,7 +972,8 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 	 */
 	@Override
 	public Integer getUnitId() {
-		// Delegated to the superclass method which stores the unitId from activate/modified
+		// Delegated to the superclass method which stores the unitId from
+		// activate/modified
 		return super.getUnitId();
 	}
 
