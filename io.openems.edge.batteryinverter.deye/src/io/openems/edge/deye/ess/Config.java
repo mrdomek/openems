@@ -2,6 +2,8 @@ package io.openems.edge.deye.ess;
 
 import org.osgi.service.metatype.annotations.AttributeDefinition;
 import org.osgi.service.metatype.annotations.ObjectClassDefinition;
+import io.openems.edge.deye.ess.DeyeOperationMode;
+
 
 @ObjectClassDefinition(//
 		name = "Deye.BatteryInverter", //
@@ -27,6 +29,9 @@ import org.osgi.service.metatype.annotations.ObjectClassDefinition;
 	int modbusUnitId() default 1;
 
 	// --- NEU: Hinzugefügte Konfigurationsparameter ---
+	@AttributeDefinition(name = "Operation mode", description = "Initial operation mode of the inverter. Currently only STANDBY vs. non-STANDBY is implemented.")
+	DeyeOperationMode operationMode() default DeyeOperationMode.REMOTE_CONTROLLED;
+	
 	@AttributeDefinition(name = "Nominal Power [W]", description = "Nominal AC power of the inverter (e.g., 15000 for 15kW). Used for percentage calculations.", defaultValue = "15000")
 	int nominalPowerW();
 

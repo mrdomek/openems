@@ -1,6 +1,5 @@
 package io.openems.edge.deye.ess;
 
-import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -121,6 +120,18 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 	// Component Configuration
 	private Config config;
 
+	/**
+	 * Ziel-Betriebsmodus aus Sicht von OpenEMS (Konfiguration/Zukunft: Automatik).
+	 */
+	private volatile DeyeOperationMode operationModeTarget = DeyeOperationMode.REMOTE_CONTROLLED;
+
+	/**
+	 * Zuletzt als 0/1 auf Register 80 geschriebener WorkState.
+	 * null = es wurde noch nichts geschrieben.
+	 */
+	private Boolean lastWorkStateCommand = null;
+	
+	
 	// Energy calculation helpers
 	private final CalculateEnergyFromPower calculateAcChargeEnergy = new CalculateEnergyFromPower(this,
 			SymmetricEss.ChannelId.ACTIVE_CHARGE_ENERGY);
@@ -155,6 +166,10 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 	private void activate(ComponentContext context, Config config) throws OpenemsException {
 		this.config = config;
 
+		// Initialen Betriebsmodus aus der Config übernehmen
+		this.operationModeTarget = config.operationMode();
+		
+		
 		// Call super.activate() first
 		if (super.activate(context, config.id(), config.alias(), config.enabled(), config.modbusUnitId(), this.cm,
 				"Modbus", config.modbus_id())) {
@@ -509,7 +524,13 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 						// Unit: W, Signed
 						m(DeyeSunHybrid.ChannelId.ACTIVE_POWER_HIGH_WORD, new SignedWordElement(694)),
 						// Unit: VA, Signed
-						m(DeyeSunHybrid.ChannelId.APPARENT_POWER_HIGH_WORD, new SignedWordElement(695)))// ,
+						m(DeyeSunHybrid.ChannelId.APPARENT_POWER_HIGH_WORD, new SignedWordElement(695))),
+				// FC16: Write Multiple Registers tasks
+
+				// Write Work State (Register 80: 1=on, 0=standby/off)
+				new FC16WriteRegistersTask(80,
+						m(DeyeSunHybrid.ChannelId.SET_WORK_STATE, new UnsignedWordElement(80))) // ,
+				
 
 		// TODO: Add Read Tasks for Error/Warning registers (e.g., 553, 555-558)
 		// to map the placeholder state channels (SystemErrorChannelId etc.)
@@ -662,7 +683,48 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent implements
 		}
 	}
 
-	private LocalDateTime lastDefineWorkState = null; // aktuell ungenutzt; kann bei nächster Aufräumrunde mit raus
+	/**
+	 * Schreibt den Work-State (Register 80) nur, wenn sich der gewünschte
+	 * Betriebsmodus geändert hat.
+	 *
+	 * Mapping aktuell:
+	 *   STANDBY              -> Register 80 = 0
+	 *   alle anderen Modi    -> Register 80 = 1 (WR "an")
+	 *
+	 * Später kann operationModeTarget auch von Logik/Controller gesetzt werden.
+	 */
+	private void defineWorkState() {
+		// Im Read-Only-Mode niemals schreiben
+		if (this.config != null && this.config.readOnlyMode()) {
+			return;
+		}
+
+		// Ziel: "WR an?" ja/nein
+		DeyeOperationMode mode = this.operationModeTarget != null
+				? this.operationModeTarget
+				: DeyeOperationMode.REMOTE_CONTROLLED;
+
+		boolean desiredOn = (mode != DeyeOperationMode.STANDBY);
+
+		// Nur wenn sich der gewünschte Zustand ändert, wirklich schreiben
+		if (this.lastWorkStateCommand != null && this.lastWorkStateCommand.booleanValue() == desiredOn) {
+			return; // nichts zu tun
+		}
+
+		this.lastWorkStateCommand = desiredOn;
+
+		try {
+			IntegerWriteChannel setWorkStateChannel = this.channel(DeyeSunHybrid.ChannelId.SET_WORK_STATE);
+			int valueToWrite = desiredOn ? 1 : 0; // 1 = ON, 0 = OFF/STANDBY laut Deye-Doku
+
+			log.debug("Setting WorkState (register 80) to [" + valueToWrite + "] based on operationMode [{}]",
+					mode);
+
+			setWorkStateChannel.setNextWriteValue(valueToWrite);
+		} catch (OpenemsNamedException e) {
+			log.error("Unable to get Channel SET_WORK_STATE: " + e.getMessage());
+		}
+	}
 
 	/**
 	 * Calculates power limits based on raw voltage and current limit readings from
