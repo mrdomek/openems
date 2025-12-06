@@ -174,6 +174,9 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
         int pTotal = ((Number) pOpt.get()).intValue();
 
+        // NEW: derive health + alarm flag from status & alarm registers
+        this.updateHealthFromStatusAndAlarms();
+
         /*
          * Determine if the selected device model is three-phase (HMT)
          * or single-phase (HMS).
@@ -325,6 +328,67 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         int percentRounded = (int) Math.round(percent);
 
         this.channel(utilizationChannelId).setNextValue(percentRounded);
+    }
+
+    /**
+     * Derive a simple health state and aggregated alarm flag from the
+     * status and alarm registers.
+     *
+     * - NO_DATA: no valid status/alarm values available
+     * - FAULT  : at least one alarm register != 0
+     * - WARNING: no alarm, but status code != 0
+     * - OK     : status == 0 and all alarm registers == 0
+     */
+    private void updateHealthFromStatusAndAlarms() {
+        boolean hasData = false;
+        boolean hasAlarm = false;
+        Integer status = null;
+
+        // Read status code
+        Optional<?> statusOpt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_STATUS_CODE)
+                .value()
+                .asOptional();
+        if (statusOpt.isPresent() && statusOpt.get() instanceof Number) {
+            status = ((Number) statusOpt.get()).intValue();
+            hasData = true;
+        }
+
+        // Read alarm registers 1..6
+        PvInverterHoymilesHMSHMT.ChannelId[] alarmIds = new PvInverterHoymilesHMSHMT.ChannelId[] {
+                PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM1_CODE,
+                PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM2_CODE,
+                PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM3_CODE,
+                PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM4_CODE,
+                PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM5_CODE,
+                PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM6_CODE
+        };
+
+        for (PvInverterHoymilesHMSHMT.ChannelId alarmId : alarmIds) {
+            Optional<?> alarmOpt = this.channel(alarmId).value().asOptional();
+            if (alarmOpt.isPresent() && alarmOpt.get() instanceof Number) {
+                int alarmValue = ((Number) alarmOpt.get()).intValue();
+                hasData = true;
+                if (alarmValue != 0) {
+                    hasAlarm = true;
+                    // kein break: wir lesen alle, um Cache aktuell zu halten
+                }
+            }
+        }
+
+        String health;
+        if (!hasData) {
+            health = "NO_DATA";
+        } else if (hasAlarm) {
+            health = "FAULT";
+        } else if (status != null && status != 0) {
+            // Kann später verfeinert werden, wenn Status-Code-Mapping bekannt ist.
+            health = "WARNING";
+        } else {
+            health = "OK";
+        }
+
+        this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_HAS_ALARM).setNextValue(hasAlarm);
+        this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_HEALTH_STATE).setNextValue(health);
     }
 
     

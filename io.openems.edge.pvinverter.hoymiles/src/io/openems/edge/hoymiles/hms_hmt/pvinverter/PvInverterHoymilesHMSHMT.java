@@ -280,7 +280,17 @@ public interface PvInverterHoymilesHMSHMT extends ManagedSymmetricPvInverter, El
         MI1_ALARM6_CODE( //
                 Doc.of(OpenemsType.INTEGER) //
                         .unit(Unit.NONE) //
-                        .text("Alarm 6 code (0x390D)."));
+                        .text("Alarm 6 code (0x390D).")),
+
+        MI1_HAS_ALARM( //
+                Doc.of(OpenemsType.BOOLEAN) //
+                        .unit(Unit.NONE) //
+                        .text("True if any of the alarm registers (0x3908..0x390D) is non-zero.")),
+
+        MI1_HEALTH_STATE( //
+                Doc.of(OpenemsType.STRING) //
+                        .unit(Unit.NONE) //
+                        .text("Derived health state of the microinverter: OK/WARNING/FAULT/NO_DATA."));
 
         private final Doc doc;
 
