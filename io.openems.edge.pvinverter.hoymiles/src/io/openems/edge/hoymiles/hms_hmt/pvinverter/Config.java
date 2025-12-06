@@ -3,60 +3,65 @@ package io.openems.edge.hoymiles.hms_hmt.pvinverter;
 import org.osgi.service.metatype.annotations.AttributeDefinition;
 import org.osgi.service.metatype.annotations.ObjectClassDefinition;
 
-/**
- * OSGi configuration for PvInverterHoymilesHMSHMTImpl.
- */
+import io.openems.edge.hoymiles.hms_hmt.pvinverter.PvInverterHoymilesHMSHMT.Phase;
+
 @ObjectClassDefinition(
-        name = "PV-Inverter Hoymiles HMS/HMT",
-        description = "Direct Modbus-TCP integration of Hoymiles HMS/HMT micro inverters via DTU-Pro-S."
+		name = "PV-Inverter Hoymiles HMS/HMT",
+		description = "Direct ModbusTCP integration of Hoymiles HMS/HMT microinverters via DTU-Pro/Pro-S."
 )
 public @interface Config {
 
-    @AttributeDefinition(
-            name = "Component-ID",
-            description = "Unique ID of this component."
-    )
-    String id() default "pvInverter0";
+	@AttributeDefinition(
+			name = "Component-ID",
+			description = "Unique ID of this Component")
+	String id() default "pvInverter0";
 
-    @AttributeDefinition(
-            name = "Alias",
-            description = "Human readable name."
-    )
-    String alias() default "pvInverter0";
+	@AttributeDefinition(
+			name = "Alias",
+			description = "Human readable name of this inverter")
+	String alias() default "Hoymiles HMS/HMT";
 
-    @AttributeDefinition(
-            name = "Enabled",
-            description = "Enable this component"
-    )
-    boolean enabled() default true;
+	@AttributeDefinition(
+			name = "Enabled",
+			description = "If disabled, this Component is ignored.")
+	boolean enabled() default true;
 
-    @AttributeDefinition(
-            name = "Read only",
-            description = "If enabled, OpenEMS will not write any control registers (e.g. power limit)."
-    )
-    boolean readOnly() default true;
+	@AttributeDefinition(
+			name = "Read-only mode",
+			description = "If true, no control registers are written to the DTU/inverter.")
+	boolean readOnly() default true;
 
-    @AttributeDefinition(
-            name = "Modbus bridge ID",
-            description = "ID of the Modbus bridge component that connects to the DTU."
-    )
-    String modbus_id() default "modbus0";
+	@AttributeDefinition(
+			name = "Modbus-Bridge-ID",
+			description = "ID of the Modbus bridge that connects to the DTU-Pro/Pro-S.")
+	String modbus_id();
 
-    @AttributeDefinition(
-            name = "Modbus Unit-ID",
-            description = "Unit-ID / Slave-ID on the DTU. Default 201."
-    )
-    int modbusUnitId() default 201;
+	@AttributeDefinition(
+			name = "Modbus Unit-ID",
+			description = "Modbus Unit-ID of the DTU / RS485 gateway.")
+	int modbusUnitId() default 1;
 
-    @AttributeDefinition(
-            name = "Use as production meter",
-            description = "If enabled, this inverter's power is treated as production in OpenEMS. "
-                    + "If disabled, values are only shown but not used in energy balances."
-    )
-    boolean useAsProductionMeter() default true;
-    
-    @AttributeDefinition(
-            name = "AC phase",
-            description = "Phase where the Hoymiles inverter is connected (L1/L2/L3).")
-    PvInverterHoymilesHMSHMT.Phase phase() default PvInverterHoymilesHMSHMT.Phase.L1;
+	@AttributeDefinition(
+	        name = "Microinverter number",
+	        description = "Hoymiles microinverter number (1–99) as configured in the DTU. "
+	                + "MI1 = 1, MI2 = 2, ..., MI99 = 99.")
+	int microinverterNumber() default 1;
+
+	@AttributeDefinition(
+			name = "Use as production meter",
+			description = "If enabled, the inverter power is counted as production in OpenEMS sums. "
+					+ "If disabled, it is only informational.")
+	boolean useAsProductionMeter() default true;
+
+	@AttributeDefinition(
+			name = "AC phase (for single-phase HMS)",
+			description = "AC phase where the inverter is connected. For HMT (3-phase) this is ignored.")
+	Phase phase() default Phase.L1;
+
+	@AttributeDefinition(
+			name = "Modbus target filter",
+			description = "OSGi target filter for the Modbus bridge service.")
+	String Modbus_target() default "(enabled=true)";
+
+	String webconsole_configurationFactory_nameHint() default "PV-Inverter Hoymiles HMS/HMT [{id}]";
 }
