@@ -1,16 +1,18 @@
 package io.openems.edge.hoymiles.hms_hmt.pvinverter;
 
-import org.osgi.annotation.versioning.ProviderType;
+import org.osgi.service.event.EventHandler;
 
-import io.openems.edge.common.channel.annotation.ChannelInfo;
+import io.openems.common.channel.Unit;
+import io.openems.common.types.OpenemsType;
+import io.openems.edge.bridge.modbus.api.ModbusComponent;
+import io.openems.edge.common.channel.Doc;
 import io.openems.edge.common.component.OpenemsComponent;
+import io.openems.edge.common.modbusslave.ModbusSlave;
+import io.openems.edge.meter.api.ElectricityMeter;
 import io.openems.edge.pvinverter.api.ManagedSymmetricPvInverter;
-import io.openems.edge.pvinverter.api.SymmetricPvInverter;
-import io.openems.edge.timedata.api.TimedataProvider;
 
-@ProviderType
-public interface PvInverterHoymilesHMSHMT
-        extends ManagedSymmetricPvInverter, OpenemsComponent, TimedataProvider {
+public interface PvInverterHoymilesHMSHMT extends ManagedSymmetricPvInverter, ElectricityMeter,
+        ModbusComponent, OpenemsComponent, EventHandler, ModbusSlave {
 
     /**
      * AC-Phase, an der der HMS/HMT hängt.
@@ -22,42 +24,50 @@ public interface PvInverterHoymilesHMSHMT
     /**
      * Zusätzliche Hoymiles-spezifische Channels.
      *
-     * Die "klassischen" PV-Channels kommen von {@link SymmetricPvInverter.ChannelId}.
+     * Die Standard-PV-/Meter-Channels kommen von:
+     * - {@link ManagedSymmetricPvInverter.ChannelId}
+     * - {@link ElectricityMeter.ChannelId}
      */
     public enum ChannelId implements io.openems.edge.common.channel.ChannelId {
 
-        @ChannelInfo(
-                type = ChannelInfo.Type.STRING,
-                description = "Serial number of Microinverter 1 (register 0x38E0 ff.).")
-        MI1_SERIAL,
+        MI1_SERIAL( //
+                Doc.of(OpenemsType.STRING) //
+                        .text("Serial number of Microinverter 1 (register 0x38E0 ff.)")),
 
-        @ChannelInfo(
-                type = ChannelInfo.Type.LONG,
-                unit = "Wh",
-                description = "Total production of Microinverter 1 in Wh (from 0x38E1; 0.1 kWh/bit → *100 Wh).")
-        MI1_TOTAL_PRODUCTION_WH,
+        MI1_TOTAL_PRODUCTION_WH( //
+                Doc.of(OpenemsType.LONG) //
+                        .unit(Unit.WATT_HOURS) //
+                        .text("Total production of Microinverter 1 in Wh (from 0x38E1; 0.1 kWh/bit → *100 Wh)")),
 
-        @ChannelInfo(
-                type = ChannelInfo.Type.LONG,
-                unit = "Wh",
-                description = "Today production of Microinverter 1 in Wh (if mapped; 0.01 kWh/bit → *10 Wh).")
-        MI1_TODAY_PRODUCTION_WH,
+        MI1_TODAY_PRODUCTION_WH( //
+                Doc.of(OpenemsType.LONG) //
+                        .unit(Unit.WATT_HOURS) //
+                        .text("Today production of Microinverter 1 in Wh (scale factor according to documentation)")),
 
-        @ChannelInfo(
-                type = ChannelInfo.Type.INTEGER,
-                unit = "W",
-                description = "AC active power of Microinverter 1, scaled to W (0x38E7, 0.1 W/bit).")
-        MI1_ACTIVE_POWER_W,
+        MI1_ACTIVE_POWER_W( //
+                Doc.of(OpenemsType.INTEGER) //
+                        .unit(Unit.WATT) //
+                        .text("AC active power of Microinverter 1 in W (0x38E7, 0.1 W/bit → scaled to W)")),
 
-        @ChannelInfo(
-                type = ChannelInfo.Type.STRING,
-                description = "Configured AC phase (L1/L2/L3) where the Hoymiles inverter is connected.")
-        CONFIGURED_PHASE;
+        CONFIGURED_PHASE( //
+                Doc.of(OpenemsType.STRING) //
+                        .text("Configured AC phase (L1/L2/L3) where the Hoymiles inverter is connected."));
+
+        private final Doc doc;
+
+        private ChannelId(Doc doc) {
+            this.doc = doc;
+        }
+
+        @Override
+        public Doc doc() {
+            return this.doc;
+        }
     }
 
     @Override
     default String debugLog() {
-        // Kannst du später mit Details füllen
+        // Kann später mit mehr Infos gefüllt werden
         return "";
     }
 }

@@ -31,16 +31,15 @@ import io.openems.edge.bridge.modbus.api.ModbusProtocol;
 import io.openems.edge.bridge.modbus.api.element.SignedWordElement;
 import io.openems.edge.bridge.modbus.api.element.StringWordElement;
 import io.openems.edge.bridge.modbus.api.task.FC4ReadInputRegistersTask;
-import io.openems.edge.bridge.modbus.sunspec.pvinverter.SunSpecPvInverter;
 import io.openems.edge.common.component.OpenemsComponent;
 import io.openems.edge.common.modbusslave.ModbusSlave;
 import io.openems.edge.common.modbusslave.ModbusSlaveTable;
+import io.openems.edge.common.taskmanager.Priority;
 import io.openems.edge.meter.api.ElectricityMeter;
 import io.openems.edge.pvinverter.api.ManagedSymmetricPvInverter;
-import io.openems.edge.pvinverter.api.SymmetricPvInverter;
 
 @Designate(ocd = Config.class, factory = true)
-@Component(//
+@Component( //
         name = "PV-Inverter.Hoymiles.HMS-HMT", //
         immediate = true, //
         configurationPolicy = REQUIRE, //
@@ -88,7 +87,11 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         this.config = config;
 
         /*
-         * Typisches OpenEMS-Muster für id/alias/modbusId/unitId.
+         * Typischer Fallback:
+         * - Wenn id leer -> Alias oder "pvInverter0"
+         * - Wenn Alias leer -> id
+         * - Wenn modbus_id leer -> "modbus0"
+         * - Wenn Unit-ID <= 0 -> 201
          */
         String id = config.id();
         String alias = config.alias();
@@ -125,7 +128,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
                 modbusId);
 
         // Konfigurierte Phase ins Channel-Model schreiben
-        this.channel(PvInverterHoymilesHMSHMT.ChannelId.CONFIGURED_PHASE.id())
+        this.channel(PvInverterHoymilesHMSHMT.ChannelId.CONFIGURED_PHASE) //
                 .setNextValue(config.phase().name());
     }
 
@@ -135,49 +138,34 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         super.deactivate();
     }
 
-    /**
-     * Zyklisches Logging von TOTAL_PRODUCTION_WH, damit du den Wert im Log siehst.
-     */
     @Override
     public void handleEvent(Event event) {
-        // Nur auf CYCLE_EXECUTE_WRITE reagieren
+        // nur auf Zyklus-Write reagieren
         if (!TOPIC_CYCLE_EXECUTE_WRITE.equals(event.getTopic())) {
             return;
         }
 
-        // Standard-PV-Channel aus SymmetricPvInverter
-        Optional<?> totalWhOpt = this.channel(SunSpecPvInverter.ChannelId.TOTAL_PRODUCTION_WH) //
+        // Wert von MI1_TOTAL_PRODUCTION_WH holen und ins Log schreiben
+        Optional<?> valueOpt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_TOTAL_PRODUCTION_WH) //
                 .value() //
                 .asOptional();
 
-        if (!totalWhOpt.isPresent()) {
+        if (!valueOpt.isPresent()) {
             return;
         }
 
-        Object totalWhObj = totalWhOpt.get();
-        if (!(totalWhObj instanceof Number)) {
+        Object value = valueOpt.get();
+        if (!(value instanceof Number)) {
             return;
         }
 
-        long totalWh = ((Number) totalWhObj).longValue();
+        long wh = ((Number) value).longValue();
 
         String idForLog = (this.config != null && this.config.id() != null && !this.config.id().isBlank())
                 ? this.config.id()
                 : "pvInverter";
 
-        this.logger.info("[{}] PV TOTAL_PRODUCTION_WH = {} Wh", idForLog, totalWh);
-
-        // Optional zusätzlich der MI1-spezifische Rohwert
-        Optional<?> mi1TotalWhOpt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_TOTAL_PRODUCTION_WH) //
-                .value() //
-                .asOptional();
-
-        mi1TotalWhOpt.ifPresent(v -> {
-            if (v instanceof Number) {
-                long mi1Wh = ((Number) v).longValue();
-                this.logger.info("[{}] Hoymiles MI1_TOTAL_PRODUCTION_WH = {} Wh", idForLog, mi1Wh);
-            }
-        });
+        this.logger.info("[{}] Hoymiles MI1_TOTAL_PRODUCTION_WH = {} Wh", idForLog, wh);
     }
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -186,60 +174,47 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
     @Override
     protected ModbusProtocol defineModbusProtocol() {
-        /*
-         * Realtime Microinverter 1 – Kapitel 4.4.4 der Hoymiles-Doku.
-         *
-         * Basisadresse: 0x38E0
-         * Wir lesen einen zusammenhängenden Block, auch wenn wir nicht alle Register
-         * sofort nutzen. Wichtig: erste Elementadresse == Task-Startadresse, sonst
-         * wirft AbstractTask die Exception "StartAddress for Modbus Element wrong".
-         */
         return new ModbusProtocol(this,
 
-                new FC4ReadInputRegistersTask(0x38E0,
-                        // Seriennummer MI1 – Länge aus Doku (hier Beispiel: 4 WORDs)
+                /*
+                 * Realtime Microinverter 1 – laut Hoymiles-Doku
+                 *
+                 * Basisadresse: 0x38E0
+                 */
+                new FC4ReadInputRegistersTask(0x38E0, Priority.HIGH,
+
+                        // Seriennummer MI1 – Länge (4 WORDs) ggf. an Doku anpassen
                         this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_SERIAL,
                                 new StringWordElement(0x38E0, 4)),
 
                         /*
-                         * Total Production MI1 – 0x38E1
-                         * Rohwert laut Doku: 0.1 kWh/bit.
-                         * Umrechnung auf Wh erfolgt später (z.B. im Controller oder mit
-                         * ElementToChannelConverter, wenn wir das fein machen wollen).
+                         * Total Production – 0x38E1
+                         * Doku: 0.1 kWh/bit → 1 kWh = 10
+                         * Skalierung auf Wh kann später über Converter / Controller erfolgen.
                          */
                         this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_TOTAL_PRODUCTION_WH,
                                 new SignedWordElement(0x38E1)),
 
                         /*
-                         * Today Production MI1 – Beispieladresse 0x38E4 (genaue Adresse in der Doku prüfen).
+                         * Today Production – Beispieladresse 0x38E4 (nach Doku anpassen)
                          */
                         this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_TODAY_PRODUCTION_WH,
                                 new SignedWordElement(0x38E4)),
 
                         /*
-                         * Active Power Phase A – 0x38E7, 0.1 W/bit.
-                         * Wir mappen sie auf den Standard-PV-Channel ACTIVE_POWER und zusätzlich
-                         * auf einen Hoymiles-spezifischen Channel.
+                         * Active Power – 0x38E7, 0.1 W/bit
+                         *
+                         * Mappen:
+                         *  - auf Meter.ACTIVE_POWER
+                         *  - auf MI1_ACTIVE_POWER_W
                          */
-
-                        // Standard-PV-Channel
-                        this.m(ManagedSymmetricPvInverter.ChannelId.ACTIVE_POWER,
+                        this.m(ElectricityMeter.ChannelId.ACTIVE_POWER,
                                 new SignedWordElement(0x38E7)),
 
-                        // Hoymiles-spezifischer Channel
                         this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_ACTIVE_POWER_W,
-                                new SignedWordElement(0x38E7));
+                                new SignedWordElement(0x38E7))
 
-    
-
-        /*
-         * Falls du zusätzlich noch den DTU-Meter-Block (0x3100...) brauchst, kannst du
-         * hier einen zweiten Task anhängen, z.B.:
-         *
-         * , new FC4ReadInputRegistersTask(0x3100,
-         *      this.m(...))
-         */
-        ;
+                ));
     }
 
     @Override
