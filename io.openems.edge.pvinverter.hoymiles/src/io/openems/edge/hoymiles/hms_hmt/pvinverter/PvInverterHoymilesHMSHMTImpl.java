@@ -18,8 +18,6 @@ import org.osgi.service.event.Event;
 import org.osgi.service.event.EventHandler;
 import org.osgi.service.event.propertytypes.EventTopics;
 import org.osgi.service.metatype.annotations.Designate;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import io.openems.common.channel.AccessMode;
 import io.openems.common.exceptions.OpenemsException;
@@ -59,10 +57,6 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
      */
     private Config config;
 
-    /*
-     * Own logger for this component.
-     */
-    private final Logger logger = LoggerFactory.getLogger(PvInverterHoymilesHMSHMTImpl.class);
 
     /**
      * Size of one microinverter register block.
@@ -180,8 +174,21 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
         int pTotal = ((Number) pOpt.get()).intValue();
 
-        // Split total power to phases according to configured Phase
-        int[] phases = splitPowerByPhase(this.config.phase(), pTotal);
+        /*
+         * Determine if the selected device model is three-phase (HMT)
+         * or single-phase (HMS).
+         */
+        boolean threePhaseDevice = false;
+        try {
+            threePhaseDevice = this.config.deviceModel() != null
+                    && this.config.deviceModel().isThreePhase();
+        } catch (Exception e) {
+            // defensive fallback: treat as single-phase on L1
+            threePhaseDevice = false;
+        }
+
+        // Split total power to phases according to device type + configured phase
+        int[] phases = splitPowerByPhase(threePhaseDevice, this.config.phase(), pTotal);
         int pL1 = phases[0];
         int pL2 = phases[1];
         int pL3 = phases[2];
@@ -193,20 +200,71 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
         // Total meter power = sum of phases
         this.channel(ElectricityMeter.ChannelId.ACTIVE_POWER).setNextValue(pL1 + pL2 + pL3);
+
+        /*
+         * DC utilization per PV input:
+         * utilization[%] = (PVx_POWER_W / configured_module_peak_W) * 100
+         * If peak = 0 or missing power -> channel is set to null.
+         */
+        updatePvUtilization(
+                PvInverterHoymilesHMSHMT.ChannelId.MI1_PV1_POWER_W,
+                PvInverterHoymilesHMSHMT.ChannelId.MI1_PV1_UTILIZATION_PERCENT,
+                this.config.pv1ModulePeakPowerW());
+
+        updatePvUtilization(
+                PvInverterHoymilesHMSHMT.ChannelId.MI1_PV2_POWER_W,
+                PvInverterHoymilesHMSHMT.ChannelId.MI1_PV2_UTILIZATION_PERCENT,
+                this.config.pv2ModulePeakPowerW());
+
+        updatePvUtilization(
+                PvInverterHoymilesHMSHMT.ChannelId.MI1_PV3_POWER_W,
+                PvInverterHoymilesHMSHMT.ChannelId.MI1_PV3_UTILIZATION_PERCENT,
+                this.config.pv3ModulePeakPowerW());
+
+        updatePvUtilization(
+                PvInverterHoymilesHMSHMT.ChannelId.MI1_PV4_POWER_W,
+                PvInverterHoymilesHMSHMT.ChannelId.MI1_PV4_UTILIZATION_PERCENT,
+                this.config.pv4ModulePeakPowerW());
+
+        updatePvUtilization(
+                PvInverterHoymilesHMSHMT.ChannelId.MI1_PV5_POWER_W,
+                PvInverterHoymilesHMSHMT.ChannelId.MI1_PV5_UTILIZATION_PERCENT,
+                this.config.pv5ModulePeakPowerW());
+
+        updatePvUtilization(
+                PvInverterHoymilesHMSHMT.ChannelId.MI1_PV6_POWER_W,
+                PvInverterHoymilesHMSHMT.ChannelId.MI1_PV6_UTILIZATION_PERCENT,
+                this.config.pv6ModulePeakPowerW());
     }
 
     /**
-     * Split total active power to phase powers according to configured phase mode.
+     * Split total active power to phase powers according to device type and
+     * configured phase.
      *
-     * L1/L2/L3  -> all power on the selected phase.
-     * ALL       -> power is evenly distributed to all three phases;
-     *              rounding differences are applied to L3.
+     * threePhaseDevice == false (HMS, single-phase):
+     *   - L1/L2/L3 -> all power on the selected phase.
+     *
+     * threePhaseDevice == true (HMT, three-phase):
+     *   - power is evenly distributed to all three phases;
+     *     rounding differences are applied to L3.
      */
-    private static int[] splitPowerByPhase(PvInverterHoymilesHMSHMT.Phase phase, int totalPower) {
+    private static int[] splitPowerByPhase(boolean threePhaseDevice,
+            PvInverterHoymilesHMSHMT.Phase phase, int totalPower) {
+
         int pL1 = 0;
         int pL2 = 0;
         int pL3 = 0;
 
+        if (threePhaseDevice) {
+            // Three-phase HMT: always distribute across all three phases
+            int perPhase = totalPower / 3;
+            pL1 = perPhase;
+            pL2 = perPhase;
+            pL3 = totalPower - pL1 - pL2; // carry rounding to L3
+            return new int[] { pL1, pL2, pL3 };
+        }
+
+        // Single-phase HMS: respect configured phase
         if (phase == null) {
             phase = PvInverterHoymilesHMSHMT.Phase.L1;
         }
@@ -224,13 +282,6 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
             pL3 = totalPower;
             break;
 
-        case ALL:
-            int perPhase = totalPower / 3;
-            pL1 = perPhase;
-            pL2 = perPhase;
-            pL3 = totalPower - pL1 - pL2; // carry rounding to L3
-            break;
-
         default:
             // Fallback: everything on L1
             pL1 = totalPower;
@@ -238,6 +289,42 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         }
 
         return new int[] { pL1, pL2, pL3 };
+    }
+
+    
+    /**
+     * Calculate DC utilization for a PV input:
+     * utilization[%] = (PV_power_W / module_peak_W) * 100.
+     *
+     * If no peak is configured (<= 0) or no valid power is available,
+     * the utilization channel is set to null.
+     */
+    private void updatePvUtilization(PvInverterHoymilesHMSHMT.ChannelId powerChannelId,
+            PvInverterHoymilesHMSHMT.ChannelId utilizationChannelId, int modulePeakPowerW) {
+
+        // No module configured -> no utilization value
+        if (modulePeakPowerW <= 0) {
+            this.channel(utilizationChannelId).setNextValue(null);
+            return;
+        }
+
+        Optional<?> pOpt = this.channel(powerChannelId).value().asOptional();
+        if (!pOpt.isPresent() || !(pOpt.get() instanceof Number)) {
+            this.channel(utilizationChannelId).setNextValue(null);
+            return;
+        }
+
+        double powerW = ((Number) pOpt.get()).doubleValue();
+
+        // Protect against negative values; clamp at 0
+        if (powerW < 0) {
+            powerW = 0;
+        }
+
+        double percent = (powerW / (double) modulePeakPowerW) * 100.0;
+        int percentRounded = (int) Math.round(percent);
+
+        this.channel(utilizationChannelId).setNextValue(percentRounded);
     }
 
     

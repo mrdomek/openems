@@ -18,11 +18,13 @@ public interface PvInverterHoymilesHMSHMT extends ManagedSymmetricPvInverter, El
      * AC-Phase, an der der HMS/HMT hängt.
      *
      * L1/L2/L3 = einphasig an der jeweiligen Phase.
-     * ALL      = symmetrischer 3-Phasen-Betrieb (Leistung wird auf L1–L3 verteilt).
+     * (Für HMT-Modelle wird die reale 3-Phasen-Verteilung später modellabhängig
+     *  gehandhabt; dieses Enum dient nur noch der HMS-Konfiguration.)
      */
     public static enum Phase {
-        L1, L2, L3, ALL;
+        L1, L2, L3;
     }
+
 
     /**
      * Zusätzliche Hoymiles-spezifische Channels.
@@ -54,7 +56,7 @@ public interface PvInverterHoymilesHMSHMT extends ManagedSymmetricPvInverter, El
 
         CONFIGURED_PHASE( //
                 Doc.of(OpenemsType.STRING) //
-                        .text("Configured AC phase (L1/L2/L3/ALL) where the Hoymiles inverter is connected.")),
+                        .text("Configured AC phase (L1/L2/L3) where the Hoymiles inverter is connected (HMS only).")),
 
         MI1_REACTIVE_POWER_VAR( //
                 Doc.of(OpenemsType.INTEGER) //
@@ -211,6 +213,40 @@ public interface PvInverterHoymilesHMSHMT extends ManagedSymmetricPvInverter, El
                         .unit(Unit.WATT) //
                         .text("PV6 input power [W] (0x3906, 0.1 W/bit).")),
 
+        // ---- NEW: utilization per PV input in % of configured module peak power ----
+
+        MI1_PV1_UTILIZATION_PERCENT( //
+                Doc.of(OpenemsType.INTEGER) //
+                        .unit(Unit.PERCENT) //
+                        .text("Relative DC loading of PV1 input in % of configured module peak power.")),
+
+        MI1_PV2_UTILIZATION_PERCENT( //
+                Doc.of(OpenemsType.INTEGER) //
+                        .unit(Unit.PERCENT) //
+                        .text("Relative DC loading of PV2 input in % of configured module peak power.")),
+
+        MI1_PV3_UTILIZATION_PERCENT( //
+                Doc.of(OpenemsType.INTEGER) //
+                        .unit(Unit.PERCENT) //
+                        .text("Relative DC loading of PV3 input in % of configured module peak power.")),
+
+        MI1_PV4_UTILIZATION_PERCENT( //
+                Doc.of(OpenemsType.INTEGER) //
+                        .unit(Unit.PERCENT) //
+                        .text("Relative DC loading of PV4 input in % of configured module peak power.")),
+
+        MI1_PV5_UTILIZATION_PERCENT( //
+                Doc.of(OpenemsType.INTEGER) //
+                        .unit(Unit.PERCENT) //
+                        .text("Relative DC loading of PV5 input in % of configured module peak power.")),
+
+        MI1_PV6_UTILIZATION_PERCENT( //
+                Doc.of(OpenemsType.INTEGER) //
+                        .unit(Unit.PERCENT) //
+                        .text("Relative DC loading of PV6 input in % of configured module peak power.")),
+
+        // ---------------------------------------------------------------------------
+
         MI1_STATUS_CODE( //
                 Doc.of(OpenemsType.INTEGER) //
                         .unit(Unit.NONE) //
@@ -257,6 +293,7 @@ public interface PvInverterHoymilesHMSHMT extends ManagedSymmetricPvInverter, El
             return this.doc;
         }
     }
+
 
     @Override
     default String debugLog() {
