@@ -157,7 +157,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
     @Override
     public void handleEvent(Event event) {
-        // nur auf Zyklus-Write reagieren
+        // React only on cycle write events
         if (!TOPIC_CYCLE_EXECUTE_WRITE.equals(event.getTopic())) {
             return;
         }
@@ -167,30 +167,11 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         }
 
         /*
-         * 1) Total-Wh ins Log schreiben (nur wenn verfügbar)
-         *    Hinweis: Wenn du die Totals gar nicht nutzen willst, kannst du
-         *    diesen Block später noch entfernen.
+         * Get total AC active power from microinverter block.
+         * This is already scaled to W via Modbus mapping.
          */
-        Optional<?> totalOpt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_TOTAL_PRODUCTION_WH) //
-                .value() //
-                .asOptional();
-
-        if (totalOpt.isPresent() && totalOpt.get() instanceof Number) {
-            long wh = ((Number) totalOpt.get()).longValue();
-
-            String idForLog = (this.config.id() != null && !this.config.id().isBlank())
-                    ? this.config.id()
-                    : "pvInverter";
-
-            this.logger.info("[{}] Hoymiles MI1_TOTAL_PRODUCTION_WH = {} Wh", idForLog, wh);
-        }
-
-        /*
-         * 2) Phasenumschaltung:
-         *    MI1_ACTIVE_POWER_W → ACTIVE_POWER_L1/L2/L3 + ACTIVE_POWER
-         */
-        Optional<?> pOpt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ACTIVE_POWER_W) //
-                .value() //
+        Optional<?> pOpt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ACTIVE_POWER_W)
+                .value()
                 .asOptional();
 
         if (!pOpt.isPresent() || !(pOpt.get() instanceof Number)) {
@@ -199,46 +180,67 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
         int pTotal = ((Number) pOpt.get()).intValue();
 
-        int pL1 = 0;
-        int pL2 = 0;
-        int pL3 = 0;
+        // Split total power to phases according to configured Phase
+        int[] phases = splitPowerByPhase(this.config.phase(), pTotal);
+        int pL1 = phases[0];
+        int pL2 = phases[1];
+        int pL3 = phases[2];
 
-        switch (this.config.phase()) {
-        case L1:
-            pL1 = pTotal;
-            break;
-
-        case L2:
-            pL2 = pTotal;
-            break;
-
-        case L3:
-            pL3 = pTotal;
-            break;
-
-        case ALL:
-            // gleichmäßig auf alle drei Phasen verteilen; Rundungsfehler auf L3 auffangen
-            int perPhase = pTotal / 3;
-            pL1 = perPhase;
-            pL2 = perPhase;
-            pL3 = pTotal - pL1 - pL2;
-            break;
-
-        default:
-            // Fallback: alles auf L1
-            pL1 = pTotal;
-            break;
-        }
-
-        // Phasenleistungen setzen
+        // Set phase powers
         this.channel(ElectricityMeter.ChannelId.ACTIVE_POWER_L1).setNextValue(pL1);
         this.channel(ElectricityMeter.ChannelId.ACTIVE_POWER_L2).setNextValue(pL2);
         this.channel(ElectricityMeter.ChannelId.ACTIVE_POWER_L3).setNextValue(pL3);
 
-        // Gesamtleistung = Summe der Phasen
+        // Total meter power = sum of phases
         this.channel(ElectricityMeter.ChannelId.ACTIVE_POWER).setNextValue(pL1 + pL2 + pL3);
     }
 
+    /**
+     * Split total active power to phase powers according to configured phase mode.
+     *
+     * L1/L2/L3  -> all power on the selected phase.
+     * ALL       -> power is evenly distributed to all three phases;
+     *              rounding differences are applied to L3.
+     */
+    private static int[] splitPowerByPhase(PvInverterHoymilesHMSHMT.Phase phase, int totalPower) {
+        int pL1 = 0;
+        int pL2 = 0;
+        int pL3 = 0;
+
+        if (phase == null) {
+            phase = PvInverterHoymilesHMSHMT.Phase.L1;
+        }
+
+        switch (phase) {
+        case L1:
+            pL1 = totalPower;
+            break;
+
+        case L2:
+            pL2 = totalPower;
+            break;
+
+        case L3:
+            pL3 = totalPower;
+            break;
+
+        case ALL:
+            int perPhase = totalPower / 3;
+            pL1 = perPhase;
+            pL2 = perPhase;
+            pL3 = totalPower - pL1 - pL2; // carry rounding to L3
+            break;
+
+        default:
+            // Fallback: everything on L1
+            pL1 = totalPower;
+            break;
+        }
+
+        return new int[] { pL1, pL2, pL3 };
+    }
+
+    
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Modbus / Meter
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
