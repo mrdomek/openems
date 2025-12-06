@@ -6,7 +6,7 @@ import static org.osgi.service.component.annotations.ReferenceCardinality.MANDAT
 import static org.osgi.service.component.annotations.ReferencePolicy.STATIC;
 import static org.osgi.service.component.annotations.ReferencePolicyOption.GREEDY;
 
-import java.util.Map;
+import java.util.Optional;
 
 import org.osgi.service.cm.ConfigurationAdmin;
 import org.osgi.service.component.ComponentContext;
@@ -18,23 +18,26 @@ import org.osgi.service.event.Event;
 import org.osgi.service.event.EventHandler;
 import org.osgi.service.event.propertytypes.EventTopics;
 import org.osgi.service.metatype.annotations.Designate;
-
-import com.google.common.collect.ImmutableMap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.openems.common.channel.AccessMode;
 import io.openems.common.exceptions.OpenemsException;
+import io.openems.common.types.MeterType;
+import io.openems.edge.bridge.modbus.api.AbstractOpenemsModbusComponent;
 import io.openems.edge.bridge.modbus.api.BridgeModbus;
 import io.openems.edge.bridge.modbus.api.ModbusComponent;
-import io.openems.edge.bridge.modbus.sunspec.DefaultSunSpecModel;
-import io.openems.edge.bridge.modbus.sunspec.SunSpecModel;
-import io.openems.edge.bridge.modbus.sunspec.pvinverter.AbstractSunSpecPvInverter;
+import io.openems.edge.bridge.modbus.api.ModbusProtocol;
+import io.openems.edge.bridge.modbus.api.element.SignedWordElement;
+import io.openems.edge.bridge.modbus.api.element.StringWordElement;
+import io.openems.edge.bridge.modbus.api.task.FC4ReadInputRegistersTask;
 import io.openems.edge.bridge.modbus.sunspec.pvinverter.SunSpecPvInverter;
 import io.openems.edge.common.component.OpenemsComponent;
 import io.openems.edge.common.modbusslave.ModbusSlave;
 import io.openems.edge.common.modbusslave.ModbusSlaveTable;
-import io.openems.edge.common.taskmanager.Priority;
 import io.openems.edge.meter.api.ElectricityMeter;
 import io.openems.edge.pvinverter.api.ManagedSymmetricPvInverter;
+import io.openems.edge.pvinverter.api.SymmetricPvInverter;
 
 @Designate(ocd = Config.class, factory = true)
 @Component(//
@@ -45,46 +48,31 @@ import io.openems.edge.pvinverter.api.ManagedSymmetricPvInverter;
                 "type=PRODUCTION" //
         })
 @EventTopics({ //
-        TOPIC_CYCLE_EXECUTE_WRITE })
-public class PvInverterHoymilesHMSHMTImpl extends AbstractSunSpecPvInverter
-        implements PvInverterHoymilesHMSHMT, SunSpecPvInverter, ManagedSymmetricPvInverter, ElectricityMeter,
+        TOPIC_CYCLE_EXECUTE_WRITE //
+})
+public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent //
+        implements PvInverterHoymilesHMSHMT, ManagedSymmetricPvInverter, ElectricityMeter, //
         ModbusComponent, OpenemsComponent, EventHandler, ModbusSlave {
 
     /*
-     * Active SunSpec models that shall be read from the inverter.
-     *
-     * According to the SunSpec certification for Hoymiles microinverters the
-     * following models are implemented: 1, 101, 103, 111, 113, 123.
-     *
-     *  - 1   : Common model
-     *  - 101 : Single-phase inverter (int)
-     *  - 103 : Three-phase inverter (int)
-     *  - 111 : Single-phase inverter (float)
-     *  - 113 : Three-phase inverter (float)
-     *  - 123 : Immediate controls (active power limit etc.)
-     *
-     * We register all of them here. The AbstractSunSpecPvInverter base class will
-     * automatically discover which models are actually present on the device and
-     * only create tasks for those.
+     * Configuration as provided by OSGi / Felix WebConsole.
      */
-    private static final Map<SunSpecModel, Priority> ACTIVE_MODELS = ImmutableMap.<SunSpecModel, Priority>builder()
-            .put(DefaultSunSpecModel.S_1, Priority.LOW)   // Common
-            .put(DefaultSunSpecModel.S_101, Priority.HIGH) // Single-phase (int)
-            .put(DefaultSunSpecModel.S_103, Priority.HIGH) // Three-phase (int)
-            .put(DefaultSunSpecModel.S_111, Priority.HIGH) // Single-phase (float)
-            .put(DefaultSunSpecModel.S_113, Priority.HIGH) // Three-phase (float)
-            .put(DefaultSunSpecModel.S_123, Priority.HIGH) // Immediate controls
-            .build();
+    private Config config;
 
     /*
-     * SunSpec "block" index to start reading from. This value is forwarded to the
-     * AbstractSunSpecPvInverter base class, which takes care of scanning the
-     * SunSpec header and model chain.
+     * Own logger for this component.
      */
-    private static final int READ_FROM_MODBUS_BLOCK = 1;
+    private final Logger logger = LoggerFactory.getLogger(PvInverterHoymilesHMSHMTImpl.class);
 
-    @Reference
-    private ConfigurationAdmin cm;
+    public PvInverterHoymilesHMSHMTImpl() {
+        super(//
+                OpenemsComponent.ChannelId.values(), //
+                ModbusComponent.ChannelId.values(), //
+                ElectricityMeter.ChannelId.values(), //
+                ManagedSymmetricPvInverter.ChannelId.values(), //
+                PvInverterHoymilesHMSHMT.ChannelId.values() //
+        );
+    }
 
     @Override
     @Reference(policy = STATIC, policyOption = GREEDY, cardinality = MANDATORY)
@@ -92,41 +80,53 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractSunSpecPvInverter
         super.setModbus(modbus);
     }
 
-    public PvInverterHoymilesHMSHMTImpl() {
-        super(//
-                ACTIVE_MODELS, //
-                OpenemsComponent.ChannelId.values(), //
-                ModbusComponent.ChannelId.values(), //
-                ElectricityMeter.ChannelId.values(), //
-                ManagedSymmetricPvInverter.ChannelId.values(), //
-                SunSpecPvInverter.ChannelId.values(), //
-                PvInverterHoymilesHMSHMT.ChannelId.values() //
-        );
-    }
+    @Reference
+    private ConfigurationAdmin cm;
 
     @Activate
     private void activate(ComponentContext context, Config config) throws OpenemsException {
+        this.config = config;
+
         /*
-         * Basic activation and channel setup are handled by the
-         * AbstractSunSpecPvInverter base class.
-         *
-         * Additional Hoymiles-specific logic (e.g. handling of useAsProductionMeter,
-         * SetOutputPower based on enableSetOutputPower, per-input channels using
-         * proprietary registers) will be added in later steps.
+         * Typisches OpenEMS-Muster für id/alias/modbusId/unitId.
          */
-        if (super.activate(context, //
-                config.id(), //
-                config.alias(), //
+        String id = config.id();
+        String alias = config.alias();
+        String modbusId = config.modbus_id();
+        int unitId = config.modbusUnitId();
+
+        if (id == null || id.isBlank()) {
+            if (alias != null && !alias.isBlank()) {
+                id = alias;
+            } else {
+                id = "pvInverter0";
+            }
+        }
+
+        if (alias == null || alias.isBlank()) {
+            alias = id;
+        }
+
+        if (modbusId == null || modbusId.isBlank()) {
+            modbusId = "modbus0";
+        }
+
+        if (unitId <= 0) {
+            unitId = 201;
+        }
+
+        super.activate(context, //
+                id, //
+                alias, //
                 config.enabled(), //
-                config.readOnly(), //
-                config.modbusUnitId(), //
+                unitId, //
                 this.cm, //
                 "Modbus", //
-                config.modbus_id(), //
-                READ_FROM_MODBUS_BLOCK, //
-                config.phase())) {
-            return;
-        }
+                modbusId);
+
+        // Konfigurierte Phase ins Channel-Model schreiben
+        this.channel(PvInverterHoymilesHMSHMT.ChannelId.CONFIGURED_PHASE.id())
+                .setNextValue(config.phase().name());
     }
 
     @Override
@@ -135,9 +135,111 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractSunSpecPvInverter
         super.deactivate();
     }
 
+    /**
+     * Zyklisches Logging von TOTAL_PRODUCTION_WH, damit du den Wert im Log siehst.
+     */
     @Override
     public void handleEvent(Event event) {
-        super.handleEvent(event);
+        // Nur auf CYCLE_EXECUTE_WRITE reagieren
+        if (!TOPIC_CYCLE_EXECUTE_WRITE.equals(event.getTopic())) {
+            return;
+        }
+
+        // Standard-PV-Channel aus SymmetricPvInverter
+        Optional<?> totalWhOpt = this.channel(SunSpecPvInverter.ChannelId.TOTAL_PRODUCTION_WH) //
+                .value() //
+                .asOptional();
+
+        if (!totalWhOpt.isPresent()) {
+            return;
+        }
+
+        Object totalWhObj = totalWhOpt.get();
+        if (!(totalWhObj instanceof Number)) {
+            return;
+        }
+
+        long totalWh = ((Number) totalWhObj).longValue();
+
+        String idForLog = (this.config != null && this.config.id() != null && !this.config.id().isBlank())
+                ? this.config.id()
+                : "pvInverter";
+
+        this.logger.info("[{}] PV TOTAL_PRODUCTION_WH = {} Wh", idForLog, totalWh);
+
+        // Optional zusätzlich der MI1-spezifische Rohwert
+        Optional<?> mi1TotalWhOpt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_TOTAL_PRODUCTION_WH) //
+                .value() //
+                .asOptional();
+
+        mi1TotalWhOpt.ifPresent(v -> {
+            if (v instanceof Number) {
+                long mi1Wh = ((Number) v).longValue();
+                this.logger.info("[{}] Hoymiles MI1_TOTAL_PRODUCTION_WH = {} Wh", idForLog, mi1Wh);
+            }
+        });
+    }
+
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // Modbus / Meter
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    @Override
+    protected ModbusProtocol defineModbusProtocol() {
+        /*
+         * Realtime Microinverter 1 – Kapitel 4.4.4 der Hoymiles-Doku.
+         *
+         * Basisadresse: 0x38E0
+         * Wir lesen einen zusammenhängenden Block, auch wenn wir nicht alle Register
+         * sofort nutzen. Wichtig: erste Elementadresse == Task-Startadresse, sonst
+         * wirft AbstractTask die Exception "StartAddress for Modbus Element wrong".
+         */
+        return new ModbusProtocol(this,
+
+                new FC4ReadInputRegistersTask(0x38E0,
+                        // Seriennummer MI1 – Länge aus Doku (hier Beispiel: 4 WORDs)
+                        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_SERIAL,
+                                new StringWordElement(0x38E0, 4)),
+
+                        /*
+                         * Total Production MI1 – 0x38E1
+                         * Rohwert laut Doku: 0.1 kWh/bit.
+                         * Umrechnung auf Wh erfolgt später (z.B. im Controller oder mit
+                         * ElementToChannelConverter, wenn wir das fein machen wollen).
+                         */
+                        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_TOTAL_PRODUCTION_WH,
+                                new SignedWordElement(0x38E1)),
+
+                        /*
+                         * Today Production MI1 – Beispieladresse 0x38E4 (genaue Adresse in der Doku prüfen).
+                         */
+                        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_TODAY_PRODUCTION_WH,
+                                new SignedWordElement(0x38E4)),
+
+                        /*
+                         * Active Power Phase A – 0x38E7, 0.1 W/bit.
+                         * Wir mappen sie auf den Standard-PV-Channel ACTIVE_POWER und zusätzlich
+                         * auf einen Hoymiles-spezifischen Channel.
+                         */
+
+                        // Standard-PV-Channel
+                        this.m(ManagedSymmetricPvInverter.ChannelId.ACTIVE_POWER,
+                                new SignedWordElement(0x38E7)),
+
+                        // Hoymiles-spezifischer Channel
+                        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_ACTIVE_POWER_W,
+                                new SignedWordElement(0x38E7));
+
+    
+
+        /*
+         * Falls du zusätzlich noch den DTU-Meter-Block (0x3100...) brauchst, kannst du
+         * hier einen zweiten Task anhängen, z.B.:
+         *
+         * , new FC4ReadInputRegistersTask(0x3100,
+         *      this.m(...))
+         */
+        ;
     }
 
     @Override
@@ -146,5 +248,16 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractSunSpecPvInverter
                 OpenemsComponent.getModbusSlaveNatureTable(accessMode), //
                 ElectricityMeter.getModbusSlaveNatureTable(accessMode), //
                 ManagedSymmetricPvInverter.getModbusSlaveNatureTable(accessMode));
+    }
+
+    @Override
+    public MeterType getMeterType() {
+        /*
+         * If configured as "production meter", the inverter power will be taken
+         * into account for production sums. Otherwise it is only informational.
+         */
+        return this.config != null && this.config.useAsProductionMeter()
+                ? MeterType.PRODUCTION
+                : MeterType.CONSUMPTION_NOT_METERED;
     }
 }
