@@ -74,10 +74,18 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
     // Selected microinverter number (1..99); used to shift the register block.
     private int microinverterNumber = 1;
     
-    // Per-port ON/OFF (0xD006 + 6*(port-1)) und temporary active power limit (0xD007 + 6*(port-1)).
+    // Per-Port ON/OFF (0xD006 + 6*(port-1)) und temporary active power limit (0xD007 + 6*(port-1)).
     // Werden nur verwendet, wenn readOnly == false.
     private SignedWordElement portOnOff;
     private SignedWordElement portTempLimitActivePower;
+
+    // Zuletzt auf den Bus geschriebene Werte, um unnötige Schreibvorgänge zu vermeiden.
+    private Boolean lastWrittenPortOn = null;
+    private Short lastWrittenLimitPercent = null;
+
+    // Zuletzt "akzeptierter" Zielwert in W für die Limitierung (für Hysterese).
+    // Wird verwendet, um kleine Änderungen (z.B. +-100 W) zu ignorieren.
+    private Integer lastTargetLimitW = null;
     
     /*
      * Logger for this component. Used e.g. for alarm summary logging.
@@ -140,6 +148,13 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
             unitId = 201;
         }
 
+        /*
+         * WICHTIG:
+         * microinverterNumber MUSS gesetzt sein,
+         * bevor super.activate() -> defineModbusProtocol() aufruft.
+         */
+        this.microinverterNumber = Math.max(1, Math.min(config.microinverterNumber(), 99));
+
         super.activate(context, //
                 id, //
                 alias, //
@@ -152,9 +167,6 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         // Konfigurierte Phase ins Channel-Model schreiben
         this.channel(PvInverterHoymilesHMSHMT.ChannelId.CONFIGURED_PHASE) //
                 .setNextValue(config.phase().name());
-
-        // Clamp microinverter number to [1..99]
-        this.microinverterNumber = Math.max(1, Math.min(config.microinverterNumber(), 99));
     }
 
     @Override
@@ -191,18 +203,33 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         /*
          * Determine if the selected device model is three-phase (HMT)
          * or single-phase (HMS).
+         *
+         * Hier explizit DeviceModel, threePhaseDevice und phase erfassen
+         * und zur Kontrolle loggen.
          */
+        DeviceModel model = null;
         boolean threePhaseDevice = false;
+        PvInverterHoymilesHMSHMT.Phase phase = null;
+
         try {
-            threePhaseDevice = this.config.deviceModel() != null
-                    && this.config.deviceModel().isThreePhase();
+            model = (this.config != null) ? this.config.deviceModel() : null;
+            phase = (this.config != null) ? this.config.phase() : null;
+            threePhaseDevice = (model != null) && model.isThreePhase();
         } catch (Exception e) {
             // defensive fallback: treat as single-phase on L1
             threePhaseDevice = false;
         }
 
+        // WICHTIG: Auf INFO, damit es sicher im Log auftaucht
+        this.logger.info("[{}] DeviceModel={} threePhase={} phase={} pTotal={} W",
+                this.id(),
+                (model != null ? model.name() : "null"),
+                Boolean.valueOf(threePhaseDevice),
+                (phase != null ? phase.name() : "null"),
+                Integer.valueOf(pTotal));
+
         // Split total power to phases according to device type + configured phase
-        int[] phases = splitPowerByPhase(threePhaseDevice, this.config.phase(), pTotal);
+        int[] phases = splitPowerByPhase(threePhaseDevice, phase, pTotal);
         int pL1 = phases[0];
         int pL2 = phases[1];
         int pL3 = phases[2];
@@ -249,7 +276,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
                 PvInverterHoymilesHMSHMT.ChannelId.MI1_PV6_POWER_W,
                 PvInverterHoymilesHMSHMT.ChannelId.MI1_PV6_UTILIZATION_PERCENT,
                 this.config.pv6ModulePeakPowerW());
-        
+
         // Update combined alarm/status summary channel + log
         updateAlarmSummary();
 
@@ -260,9 +287,6 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
          * Status / "Ampel"-Logik:
          * - hasAlarm  -> es liegt irgendein Hoymiles-Alarmcode an
          * - interpretedStatus -> grobe Interpretation für UI
-         *
-         * Später können wir hier noch sauberer nach Doku mappen und ggf.
-         * das generische OpenEMS STATE-Channel anbinden.
          */
         boolean hasAlarm = hasAnyHoymilesAlarm();
 
@@ -274,14 +298,14 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_HAS_ALARM).setNextValue(hasAlarm);
         this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_INTERPRETED_STATUS)
                 .setNextValue(interpretedStatus);
-        
+
         // Aktive Leistungsbegrenzung anwenden, falls nicht im Read-Only-Modus
         if (!this.config.readOnly()) {
             this.applyActivePowerLimitFromChannel();
         }
-
-    
     }
+
+
 
     @Override
     public void setActivePowerLimit(int power) throws OpenemsNamedException {
@@ -560,20 +584,30 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
                 .orElse(0);
     }
         
-        /**
-         * Helper: set per-port ON/OFF register.
-         *
-         * According to Hoymiles documentation:
-         * 0 = OFF / stop generating
-         * 1 = ON / normal operation
-         */
-        private void setPortOnOff(boolean on) {
-            if (this.portOnOff == null) {
-                return;
-            }
-            short value = (short) (on ? 1 : 0);
-            this.portOnOff.setNextWriteValue(Short.valueOf(value));
+    /**
+     * Helper: set per-port ON/OFF register.
+     *
+     * According to Hoymiles documentation:
+     * 0 = OFF / stop generating
+     * 1 = ON / normal operation
+     *
+     * Es wird nur geschrieben, wenn sich der Zustand tatsächlich geändert hat,
+     * um den Modbus-Bus und die DTU zu schonen.
+     */
+    private void setPortOnOff(boolean on) {
+        if (this.portOnOff == null) {
+            return;
         }
+
+        // Wenn wir denselben Zustand bereits geschrieben haben -> nichts tun
+        if (this.lastWrittenPortOn != null && this.lastWrittenPortOn.booleanValue() == on) {
+            return;
+        }
+
+        short value = (short) (on ? 1 : 0);
+        this.portOnOff.setNextWriteValue(Short.valueOf(value));
+        this.lastWrittenPortOn = Boolean.valueOf(on);
+    }
 
         
     /**
@@ -592,6 +626,17 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
      *      → Wechselrichter wird OFF geschaltet (Port ON/OFF = 0)
      * - targetLimitW <= 0:
      *      → ebenfalls OFF
+     *
+     * Schreib-Optimierung:
+     * - portOnOff wird nur geschrieben, wenn sich der Zustand geändert hat.
+     * - portTempLimitActivePower wird nur geschrieben, wenn sich der Prozentwert
+     *   gegenüber lastWrittenLimitPercent geändert hat.
+     *
+     * Hysterese:
+     * - Kleine Änderungen am Sollwert in W sollen nicht sofort neue
+     *   Modbus-Schreibvorgänge auslösen.
+     * - Wenn |targetLimitW - lastTargetLimitW| < 100 W, wird der neue
+     *   Sollwert ignoriert und nichts geschrieben.
      *
      * Hinweis: Es wird nur etwas geschrieben, wenn der Channel einen gültigen Zahlenwert hat.
      */
@@ -625,11 +670,15 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
                 this.setPortOnOff(false);
                 this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
                         .setNextValue(0);
+                this.lastWrittenLimitPercent = null;
+                this.lastTargetLimitW = null;
             } else {
                 // >0 W -> Wechselrichter EIN, aber ohne aktive Limitierung
                 this.setPortOnOff(true);
                 this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
                         .setNextValue(null);
+                this.lastWrittenLimitPercent = null;
+                this.lastTargetLimitW = null;
             }
             return;
         }
@@ -639,7 +688,27 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
             this.setPortOnOff(false);
             this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
                     .setNextValue(0);
+            this.lastWrittenLimitPercent = null;
+            this.lastTargetLimitW = null;
             return;
+        }
+
+        /*
+         * Hysterese in W:
+         * Wenn sich der Sollwert nur geringfügig gegenüber dem zuletzt
+         * übernommenen Wert ändert, ignorieren wir die Änderung komplett,
+         * um die Schreibfrequenz zu reduzieren.
+         */
+        if (this.lastTargetLimitW != null) {
+            int deltaW = Math.abs(targetLimitW - this.lastTargetLimitW.intValue());
+            if (deltaW < 100) {
+                // Änderung < 100 W -> keine neue Modbus-Schreiboperation
+                if (this.logger.isDebugEnabled()) {
+                    this.logger.debug("[{}] Skip limit update: targetLimitW={} W delta={} W < 100 W",
+                            this.id(), Integer.valueOf(targetLimitW), Integer.valueOf(deltaW));
+                }
+                return;
+            }
         }
 
         double ratio = (double) targetLimitW / (double) maxTotalPowerW;
@@ -655,6 +724,8 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
             this.setPortOnOff(false);
             this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
                     .setNextValue(0);
+            this.lastWrittenLimitPercent = null;
+            this.lastTargetLimitW = null;
             return;
         }
 
@@ -664,8 +735,18 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
                 .setNextValue(percent);
 
-        // Modbus-Element setzen, wird im nächsten FC16-Task geschrieben
-        this.portTempLimitActivePower.setNextWriteValue(Short.valueOf((short) percent));
+        short newPercentShort = (short) percent;
+
+        // Nur schreiben, wenn sich der Prozentwert tatsächlich geändert hat
+        if (this.lastWrittenLimitPercent == null
+                || this.lastWrittenLimitPercent.shortValue() != newPercentShort) {
+
+            this.portTempLimitActivePower.setNextWriteValue(Short.valueOf(newPercentShort));
+            this.lastWrittenLimitPercent = Short.valueOf(newPercentShort);
+        }
+
+        // Diesen Sollwert in W als Basis für die nächste Hysterese merken
+        this.lastTargetLimitW = Integer.valueOf(targetLimitW);
     }
 
     
