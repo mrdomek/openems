@@ -74,8 +74,9 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
     // Selected microinverter number (1..99); used to shift the register block.
     private int microinverterNumber = 1;
     
-    // Per-port temporary active power limit element (0xD007 + 6*(port-1)).
-    // Wird nur verwendet, wenn readOnly == false.
+    // Per-port ON/OFF (0xD006 + 6*(port-1)) und temporary active power limit (0xD007 + 6*(port-1)).
+    // Werden nur verwendet, wenn readOnly == false.
+    private SignedWordElement portOnOff;
     private SignedWordElement portTempLimitActivePower;
     
     /*
@@ -558,7 +559,23 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
                 .map(v -> ((Number) v).intValue()) //
                 .orElse(0);
     }
+        
+        /**
+         * Helper: set per-port ON/OFF register.
+         *
+         * According to Hoymiles documentation:
+         * 0 = OFF / stop generating
+         * 1 = ON / normal operation
+         */
+        private void setPortOnOff(boolean on) {
+            if (this.portOnOff == null) {
+                return;
+            }
+            short value = (short) (on ? 1 : 0);
+            this.portOnOff.setNextWriteValue(Short.valueOf(value));
+        }
 
+        
     /**
      * Apply the active power limit in W from channel MI1_LIMIT_ACTIVE_POWER_W
      * to the Hoymiles per-port temporary limit register as percentage.
@@ -566,7 +583,15 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
      * Skalierung:
      * - Basis: maxTotalPowerW aus dem konfigurierten DeviceModel
      * - percent = round(targetW / maxTotalPowerW * 100)
-     * - Clamp auf [2..100]; bei targetW <= 0 oder maxTotalPowerW <= 0 -> 100 % (keine Begrenzung).
+     *
+     * Zusätzliche Logik:
+     * - DeviceGeneration definiert minPercent:
+     *      Gen2: 10–100 %
+     *      Gen3:  2–100 %
+     * - Wenn gewünschter Prozentwert < minPercent:
+     *      → Wechselrichter wird OFF geschaltet (Port ON/OFF = 0)
+     * - targetLimitW <= 0:
+     *      → ebenfalls OFF
      *
      * Hinweis: Es wird nur etwas geschrieben, wenn der Channel einen gültigen Zahlenwert hat.
      */
@@ -588,30 +613,59 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
         DeviceModel model = (this.config != null) ? this.config.deviceModel() : null;
         int maxTotalPowerW = (model != null) ? model.getMaxTotalPowerW() : 0;
-
-        int percent;
-        if (maxTotalPowerW <= 0 || targetLimitW <= 0) {
-            // Behandle als "keine Begrenzung"
-            percent = 100;
-        } else {
-            double ratio = (double) targetLimitW / (double) maxTotalPowerW;
-            double percD = ratio * 100.0;
-            percent = (int) Math.round(percD);
-
-            if (percent < 2) {
-                percent = 2;
-            } else if (percent > 100) {
-                percent = 100;
-            }
+        int minPercent = 0;
+        if (model != null && model.getGeneration() != null) {
+            minPercent = model.getGeneration().getMinPercent(); // z.B. 10 oder 2
         }
 
-        // Prozent-Info in Channel schreiben (für UI / Logging)
+        // Kein sinnvoller Max-Wert bekannt -> nur Ein/Aus interpretieren
+        if (maxTotalPowerW <= 0) {
+            if (targetLimitW <= 0) {
+                // 0 W -> Wechselrichter AUS
+                this.setPortOnOff(false);
+                this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
+                        .setNextValue(0);
+            } else {
+                // >0 W -> Wechselrichter EIN, aber ohne aktive Limitierung
+                this.setPortOnOff(true);
+                this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
+                        .setNextValue(null);
+            }
+            return;
+        }
+
+        // Explizit 0 W -> OFF
+        if (targetLimitW <= 0) {
+            this.setPortOnOff(false);
+            this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
+                    .setNextValue(0);
+            return;
+        }
+
+        double ratio = (double) targetLimitW / (double) maxTotalPowerW;
+        double percD = ratio * 100.0;
+        int percent = (int) Math.round(percD);
+
+        if (percent > 100) {
+            percent = 100;
+        }
+
+        // Unterhalb des Arbeitsbereichs der DeviceGeneration -> WR AUS
+        if (minPercent > 0 && percent < minPercent) {
+            this.setPortOnOff(false);
+            this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
+                    .setNextValue(0);
+            return;
+        }
+
+        // Normalfall: innerhalb des Bereichs -> WR EIN + Limit
+        this.setPortOnOff(true);
+
         this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
                 .setNextValue(percent);
 
         // Modbus-Element setzen, wird im nächsten FC16-Task geschrieben
-        this.portTempLimitActivePower.setNextWriteValue((short) percent);
-
+        this.portTempLimitActivePower.setNextWriteValue(Short.valueOf((short) percent));
     }
 
     
@@ -706,7 +760,8 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         final SignedWordElement alarm5 = new SignedWordElement(base + 0x2C);        // 0x390C
         final SignedWordElement alarm6 = new SignedWordElement(base + 0x2D);        // 0x390D
 
-        // Per-Port "Temporary Limit Active Power" in Prozent (0xD007 + 6*(port-1))
+        // Per-Port ON/OFF (0xD006 + 6*(port-1)) und "Temporary Limit Active Power" (0xD007 + 6*(port-1))
+        this.portOnOff = new SignedWordElement(portBase + 0x0000);
         this.portTempLimitActivePower = new SignedWordElement(portBase + 0x0001);
 
         /*
@@ -834,8 +889,8 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
                         pv1Power, pv2Power, pv3Power, pv4Power, pv5Power, pv6Power,
                         status, alarm1, alarm2, alarm3, alarm4, alarm5, alarm6),
 
-                // Write task: per-port Temporary Limit Active Power [%]
-                new FC16WriteRegistersTask(portBase + 0x0001, this.portTempLimitActivePower));
+                // Write task: per-port ON/OFF + Temporary Limit Active Power [%]
+                new FC16WriteRegistersTask(portBase, this.portOnOff, this.portTempLimitActivePower));
     }
 
     @Override
