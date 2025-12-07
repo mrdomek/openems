@@ -19,6 +19,9 @@ import org.osgi.service.event.EventHandler;
 import org.osgi.service.event.propertytypes.EventTopics;
 import org.osgi.service.metatype.annotations.Designate;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import io.openems.common.channel.AccessMode;
 import io.openems.common.exceptions.OpenemsException;
 import io.openems.common.types.MeterType;
@@ -57,7 +60,6 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
      */
     private Config config;
 
-
     /**
      * Size of one microinverter register block.
      *
@@ -70,6 +72,12 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
     // Selected microinverter number (1..99); used to shift the register block.
     private int microinverterNumber = 1;
+    
+    /*
+     * Logger for this component. Used e.g. for alarm summary logging.
+     */
+    private final Logger logger = LoggerFactory.getLogger(PvInverterHoymilesHMSHMTImpl.class);
+
 
     public PvInverterHoymilesHMSHMTImpl() {
         super(//
@@ -235,6 +243,9 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
                 PvInverterHoymilesHMSHMT.ChannelId.MI1_PV6_POWER_W,
                 PvInverterHoymilesHMSHMT.ChannelId.MI1_PV6_UTILIZATION_PERCENT,
                 this.config.pv6ModulePeakPowerW());
+        
+        // Update combined alarm/status summary channel + log
+        updateAlarmSummary();        
 
         /*
          * Status / "Ampel"-Logik:
@@ -468,6 +479,52 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         return "OFF_OR_UNKNOWN";
     }
     
+    /**
+     * Read status + alarm codes, combine all bits and write a compact
+     * alarm summary string to MI1_ALARM_SUMMARY. Also log if any bit is set.
+     */
+    private void updateAlarmSummary() {
+        // Read all relevant 16-bit words (treat missing/null as 0)
+        int status = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_STATUS_CODE);
+        int alarm1 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM1_CODE);
+        int alarm2 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM2_CODE);
+        int alarm3 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM3_CODE);
+        int alarm4 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM4_CODE);
+        int alarm5 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM5_CODE);
+        int alarm6 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM6_CODE);
+
+        // Combine all bits (status + alarm1..6)
+        int combined = (status | alarm1 | alarm2 | alarm3 | alarm4 | alarm5 | alarm6) & 0xFFFF;
+
+        // Build short string like "BIT0,BIT3" or "NO_ALARM"
+        String summary = HoymilesAlarmBit.toShortString(combined);
+
+        // Write to channel for UI
+        this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM_SUMMARY).setNextValue(summary);
+
+        // Log only if there is at least one alarm bit set
+        if (!"NO_ALARM".equals(summary)) {
+            String idForLog = "pvInverter";
+            if (this.config != null && this.config.id() != null && !this.config.id().isBlank()) {
+                idForLog = this.config.id();
+            }
+
+            this.logger.warn("[{}] Hoymiles alarm(s): {}", idForLog, summary);
+        }
+    }
+
+    /**
+     * Helper: read a 16-bit status/alarm channel as int.
+     * Returns 0 if the channel is null or not a Number.
+     */
+    private int getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId channelId) {
+        return this.channel(channelId) //
+                .value() //
+                .asOptional() //
+                .map(v -> ((Number) v).intValue()) //
+                .orElse(0);
+    }
+
     
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Modbus / Meter

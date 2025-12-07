@@ -295,7 +295,14 @@ public interface PvInverterHoymilesHMSHMT extends ManagedSymmetricPvInverter, El
         MI1_INTERPRETED_STATUS( //
                 Doc.of(OpenemsType.STRING) //
                         .unit(Unit.NONE) //
-                        .text("Coarse interpreted status of Microinverter 1 (e.g. PRODUCING / STANDBY / ERROR)."));
+                        .text("Coarse interpreted status of Microinverter 1 (e.g. PRODUCING / STANDBY / ERROR).")),
+        
+        MI1_ALARM_SUMMARY( //
+                Doc.of(OpenemsType.STRING) //
+                        .unit(Unit.NONE) //
+                        .text("Combined alarm/status bits for Microinverter 1, "
+                                + "derived from status and alarm codes 1–6."));
+
 
 
         private final Doc doc;
