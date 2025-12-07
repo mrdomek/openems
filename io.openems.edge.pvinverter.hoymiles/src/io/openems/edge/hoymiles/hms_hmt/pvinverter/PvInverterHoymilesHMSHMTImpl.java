@@ -174,9 +174,6 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
         int pTotal = ((Number) pOpt.get()).intValue();
 
-        // NEW: derive health + alarm flag from status & alarm registers
-        this.updateHealthFromStatusAndAlarms();
-
         /*
          * Determine if the selected device model is three-phase (HMT)
          * or single-phase (HMS).
@@ -238,6 +235,25 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
                 PvInverterHoymilesHMSHMT.ChannelId.MI1_PV6_POWER_W,
                 PvInverterHoymilesHMSHMT.ChannelId.MI1_PV6_UTILIZATION_PERCENT,
                 this.config.pv6ModulePeakPowerW());
+
+        /*
+         * Status / "Ampel"-Logik:
+         * - hasAlarm  -> es liegt irgendein Hoymiles-Alarmcode an
+         * - interpretedStatus -> grobe Interpretation für UI
+         *
+         * Später können wir hier noch sauberer nach Doku mappen und ggf.
+         * das generische OpenEMS STATE-Channel anbinden.
+         */
+        boolean hasAlarm = hasAnyHoymilesAlarm();
+
+        String interpretedStatus = interpretHoymilesStatus(
+                pTotal,
+                readIntChannelOrDefault(PvInverterHoymilesHMSHMT.ChannelId.MI1_STATUS_CODE, -1),
+                hasAlarm);
+
+        this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_HAS_ALARM).setNextValue(hasAlarm);
+        this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_INTERPRETED_STATUS)
+                .setNextValue(interpretedStatus);
     }
 
     /**
@@ -391,6 +407,67 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_HEALTH_STATE).setNextValue(health);
     }
 
+
+    /**
+     * Check if any of the Hoymiles alarm codes is non-zero.
+     */
+    private boolean hasAnyHoymilesAlarm() {
+        return isNonZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM1_CODE)
+                || isNonZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM2_CODE)
+                || isNonZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM3_CODE)
+                || isNonZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM4_CODE)
+                || isNonZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM5_CODE)
+                || isNonZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM6_CODE);
+    }
+
+    private boolean isNonZero(PvInverterHoymilesHMSHMT.ChannelId channelId) {
+        Optional<?> opt = this.channel(channelId).value().asOptional();
+        if (!opt.isPresent() || !(opt.get() instanceof Number)) {
+            return false;
+        }
+        return ((Number) opt.get()).intValue() != 0;
+    }
+
+    /**
+     * Read an integer channel or return defaultValue if not present/invalid.
+     */
+    private int readIntChannelOrDefault(PvInverterHoymilesHMSHMT.ChannelId channelId, int defaultValue) {
+        Optional<?> opt = this.channel(channelId).value().asOptional();
+        if (!opt.isPresent() || !(opt.get() instanceof Number)) {
+            return defaultValue;
+        }
+        return ((Number) opt.get()).intValue();
+    }
+
+    /**
+     * Very coarse interpretation of Hoymiles status for UI / "Ampel".
+     *
+     * This does NOT yet map exact vendor codes – that can be refined once
+     * we implement a full enum based on the official documentation.
+     *
+     * Current rule of thumb:
+     * - hasAlarm           -> "ERROR"
+     * - !hasAlarm + P > 0  -> "PRODUCING"
+     * - !hasAlarm + P == 0 -> "STANDBY" (or "OFF")
+     */
+    private static String interpretHoymilesStatus(int totalPower, int rawStatusCode, boolean hasAlarm) {
+        if (hasAlarm) {
+            return "ERROR";
+        }
+
+        if (totalPower > 0) {
+            return "PRODUCING";
+        }
+
+        // totalPower == 0: differentiate a bit using rawStatusCode if needed
+        // For now keep it simple, can be refined later.
+        if (rawStatusCode == 0) {
+            return "STANDBY";
+        }
+
+        return "OFF_OR_UNKNOWN";
+    }
+    
     
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Modbus / Meter

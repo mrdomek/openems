@@ -290,7 +290,13 @@ public interface PvInverterHoymilesHMSHMT extends ManagedSymmetricPvInverter, El
         MI1_HEALTH_STATE( //
                 Doc.of(OpenemsType.STRING) //
                         .unit(Unit.NONE) //
-                        .text("Derived health state of the microinverter: OK/WARNING/FAULT/NO_DATA."));
+                        .text("Derived health state of the microinverter: OK/WARNING/FAULT/NO_DATA.")),
+        
+        MI1_INTERPRETED_STATUS( //
+                Doc.of(OpenemsType.STRING) //
+                        .unit(Unit.NONE) //
+                        .text("Coarse interpreted status of Microinverter 1 (e.g. PRODUCING / STANDBY / ERROR)."));
+
 
         private final Doc doc;
 
