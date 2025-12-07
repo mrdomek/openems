@@ -301,7 +301,20 @@ public interface PvInverterHoymilesHMSHMT extends ManagedSymmetricPvInverter, El
                 Doc.of(OpenemsType.STRING) //
                         .unit(Unit.NONE) //
                         .text("Combined alarm/status bits for Microinverter 1, "
-                                + "derived from status and alarm codes 1–6."));
+                                + "derived from status and alarm codes 1–6.")),
+        
+     // Leistungsbegrenzung: Sollwert in W + daraus abgeleiteter Prozentwert
+        MI1_LIMIT_ACTIVE_POWER_W( //
+                Doc.of(OpenemsType.INTEGER) //
+                        .unit(Unit.WATT) //
+                        .text("Target active power limit in W for this microinverter port. "
+                                + "This is converted based on the configured DeviceModel maxTotalPowerW "
+                                + "and written as percentage to the Hoymiles register 0xD007 + 6*(port-1).")),
+
+        MI1_LIMIT_ACTIVE_POWER_PERCENT( //
+                Doc.of(OpenemsType.INTEGER) //
+                        .unit(Unit.PERCENT) //
+                        .text("Last active power limit actually sent to the microinverter in percent [2..100]."));
 
 
 
