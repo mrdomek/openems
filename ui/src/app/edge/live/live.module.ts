@@ -1,18 +1,25 @@
 import { NgModule } from "@angular/core";
 import { BrowserModule } from "@angular/platform-browser";
 import { BrowserAnimationsModule } from "@angular/platform-browser/animations";
+
 import { EdgeOfflineModule } from "src/app/shared/components/edge/offline/offline.module";
 import { HelpButtonComponent } from "src/app/shared/components/modal/help-button/help-button";
 import { ModalModule } from "src/app/shared/components/modal/modal.module";
 import { PullToRefreshComponent } from "src/app/shared/components/pull-to-refresh/pull-to-refresh";
+
 import { SharedModule } from "./../../shared/shared.module";
+
 import { Common_Autarchy } from "./common/autarchy/Common_Autarchy";
 import { CommonConsumption } from "./common/consumption/common-consumption";
 import { Common_Grid } from "./common/grid/Common_Grid";
+import { Common_HoymilesSimpleComponent } from "./common/hoymiles-simple/Common_HoymilesSimple";
 import { Common_Production } from "./common/production/Common_Production";
 import { CommonSelfconsumption } from "./common/selfconsumption/common-selfconsumption";
 import { StorageLiveModule } from "./common/storage/storage.module";
 import { WeatherModule } from "./common/weather/weather.module";
+
+// NEU: standalone-Komponente unseres Widgets
+
 import { Controller_ChannelthresholdComponent } from "./Controller/Channelthreshold/Channelthreshold";
 import { Controller_ChpSocComponent } from "./Controller/ChpSoc/ChpSoc";
 import { Controller_ChpSocModalComponent } from "./Controller/ChpSoc/modal/modal.component";
@@ -54,11 +61,19 @@ import { ModalComponent as EvcsClusterApiModalComponent } from "./Multiple/evcs-
         StorageLiveModule,
         BrowserAnimationsModule,
         BrowserModule,
+
+        // Common-Widgets
         Common_Autarchy,
         CommonConsumption,
         Common_Grid,
         Common_Production,
         CommonSelfconsumption,
+        WeatherModule,
+
+        // NEU: standalone-Widget
+        Common_HoymilesSimpleComponent,
+
+        // Controller-Module
         Controller_Api_ModbusTcp,
         Controller_EnerixControl,
         Controller_Ess_FixActivePower,
@@ -70,13 +85,16 @@ import { ModalComponent as EvcsClusterApiModalComponent } from "./Multiple/evcs-
         Controller_Io_HeatingElement,
         Controller_Io_HeatingRoom,
         ControllerIoFixDigitalOutput,
+
+        // Shared/Utility
         EdgeOfflineModule,
         EnergymonitorModule,
-        WeatherModule,
         ModalModule,
         SharedModule,
         PullToRefreshComponent,
         HelpButtonComponent,
+
+        // EVCS-Cluster Chart
         EvcsClusterApiChartComponent,
     ],
     declarations: [

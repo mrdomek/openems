@@ -1,0 +1,13 @@
+<oe-flat-widget (click)="presentModal()" [icon]="{ name: 'sunny-outline' }" [title]="'Hoymiles DC-Inputs'">
+
+  <ng-container *ngFor="let input of inputs">
+    <oe-flat-widget-line [name]="input.label" [channelAddress]="getUtilizationAddress(input)">
+    </oe-flat-widget-line>
+
+    <oe-flat-widget-percentagebar [channelAddress]="getUtilizationAddress(input)">
+    </oe-flat-widget-percentagebar>
+
+    <oe-flat-widget-horizontal-line></oe-flat-widget-horizontal-line>
+  </ng-container>
+
+</oe-flat-widget>

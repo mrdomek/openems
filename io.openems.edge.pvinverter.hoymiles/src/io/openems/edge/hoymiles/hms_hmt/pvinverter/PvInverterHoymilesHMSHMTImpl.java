@@ -56,6 +56,16 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         implements PvInverterHoymilesHMSHMT, ManagedSymmetricPvInverter, ElectricityMeter, //
         ModbusComponent, OpenemsComponent, EventHandler, ModbusSlave {
 
+    // OpenEMS-konformes SLF4J-Logging (aktuell nur für evtl. spätere Nutzung)
+    private final Logger log = LoggerFactory.getLogger(PvInverterHoymilesHMSHMTImpl.class);
+
+    /*
+     * Interner Debug-Schalter für debugLog():
+     * - true  -> ausführliche Statuszeile für ctrlDebugLog0
+     * - false -> debugLog() gibt einen leeren String zurück
+     */
+    private static final boolean INTERNAL_DEBUG = true;
+
     /*
      * Configuration as provided by OSGi / Felix WebConsole.
      */
@@ -70,6 +80,15 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
      * → block size: 0x60 (96 words) per microinverter.
      */
     private static final int MI_REGISTER_BLOCK_SIZE = 0x60; // 96 registers per inverter block
+
+    /**
+     * Hysterese für Leistungs-Sollwert in W.
+     *
+     * Wenn sich der eingehende Sollwert (nach Clamping auf Mindestleistung)
+     * gegenüber dem letzten übernommenen Wert um weniger als diesen Betrag
+     * ändert, wird kein neuer Modbus-Schreibvorgang ausgelöst.
+     */
+    private static final int LIMIT_HYSTERESIS_W = 100;
 
     // Selected microinverter number (1..99); used to shift the register block.
     private int microinverterNumber = 1;
@@ -86,12 +105,6 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
     // Zuletzt "akzeptierter" Zielwert in W für die Limitierung (für Hysterese).
     // Wird verwendet, um kleine Änderungen (z.B. +-100 W) zu ignorieren.
     private Integer lastTargetLimitW = null;
-    
-    /*
-     * Logger for this component. Used e.g. for alarm summary logging.
-     */
-    private final Logger logger = LoggerFactory.getLogger(PvInverterHoymilesHMSHMTImpl.class);
-
 
     public PvInverterHoymilesHMSHMTImpl() {
         super(//
@@ -203,9 +216,6 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         /*
          * Determine if the selected device model is three-phase (HMT)
          * or single-phase (HMS).
-         *
-         * Hier explizit DeviceModel, threePhaseDevice und phase erfassen
-         * und zur Kontrolle loggen.
          */
         DeviceModel model = null;
         boolean threePhaseDevice = false;
@@ -219,14 +229,6 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
             // defensive fallback: treat as single-phase on L1
             threePhaseDevice = false;
         }
-
-        // WICHTIG: Auf INFO, damit es sicher im Log auftaucht
-        this.logger.info("[{}] DeviceModel={} threePhase={} phase={} pTotal={} W",
-                this.id(),
-                (model != null ? model.name() : "null"),
-                Boolean.valueOf(threePhaseDevice),
-                (phase != null ? phase.name() : "null"),
-                Integer.valueOf(pTotal));
 
         // Split total power to phases according to device type + configured phase
         int[] phases = splitPowerByPhase(threePhaseDevice, phase, pTotal);
@@ -277,7 +279,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
                 PvInverterHoymilesHMSHMT.ChannelId.MI1_PV6_UTILIZATION_PERCENT,
                 this.config.pv6ModulePeakPowerW());
 
-        // Update combined alarm/status summary channel + log
+        // Update combined alarm/status summary channel
         updateAlarmSummary();
 
         // Health-State (Ampel) aus Status- und Alarm-Register ableiten
@@ -305,22 +307,31 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         }
     }
 
-
-
     @Override
-    public void setActivePowerLimit(int power) throws OpenemsNamedException {
+    public void setActivePowerLimit(Integer power) throws OpenemsNamedException {
         /*
-         * Der Controller liefert hier ein Leistungs-Limit in W.
-         * Wir übernehmen das 1:1 als "MI1_LIMIT_ACTIVE_POWER_W".
+         * Semantik:
+         * - power == null  -> externes Limit wird entfernt
+         *                     => Inverter soll wieder mit 100 % arbeiten
+         * - power >= 0     -> neuer Sollwert in W
          *
-         * Vorzeichenkonvention:
-         * - Negative Werte machen bei einem PV-Leistungs-Limit keinen Sinn.
-         *   -> wir clampen auf 0 W.
-         *
-         * Die Umrechnung W -> % und das tatsächliche Schreiben
-         * auf das Hoymiles-Register übernimmt applyActivePowerLimitFromChannel().
+         * Die eigentliche Umrechnung W -> % und das Schreiben auf die Hoymiles-Register
+         * übernimmt applyActivePowerLimitFromChannel().
          */
-        int limitW = Math.max(0, power);
+
+        if (power == null) {
+            // Kein aktiv gesetztes Limit mehr -> Channel leeren
+            this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_W)
+                    .setNextValue(null);
+
+            // Hysterese-Zustand zurücksetzen; den Reset auf 100 % macht
+            // applyActivePowerLimitFromChannel() beim nächsten Zyklus.
+            this.lastTargetLimitW = null;
+            return;
+        }
+
+        // Negative Werte machen bei einem PV-Limit keinen Sinn -> auf 0 clampen
+        int limitW = Math.max(0, power.intValue());
 
         this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_W)
                 .setNextValue(limitW);
@@ -380,7 +391,6 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         return new int[] { pL1, pL2, pL3 };
     }
 
-    
     /**
      * Calculate DC utilization for a PV input:
      * utilization[%] = (PV_power_W / module_peak_W) * 100.
@@ -477,7 +487,6 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_HEALTH_STATE).setNextValue(health);
     }
 
-
     /**
      * Check if any of the Hoymiles alarm codes is non-zero.
      */
@@ -540,7 +549,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
     
     /**
      * Read status + alarm codes, combine all bits and write a compact
-     * alarm summary string to MI1_ALARM_SUMMARY. Also log if any bit is set.
+     * alarm summary string to MI1_ALARM_SUMMARY.
      */
     private void updateAlarmSummary() {
         // Read all relevant 16-bit words (treat missing/null as 0)
@@ -560,16 +569,6 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
         // Write to channel for UI
         this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM_SUMMARY).setNextValue(summary);
-
-        // Log only if there is at least one alarm bit set
-        if (!"NO_ALARM".equals(summary)) {
-            String idForLog = "pvInverter";
-            if (this.config != null && this.config.id() != null && !this.config.id().isBlank()) {
-                idForLog = this.config.id();
-            }
-
-            this.logger.warn("[{}] Hoymiles alarm(s): {}", idForLog, summary);
-        }
     }
 
     /**
@@ -609,48 +608,98 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         this.lastWrittenPortOn = Boolean.valueOf(on);
     }
 
-        
     /**
      * Apply the active power limit in W from channel MI1_LIMIT_ACTIVE_POWER_W
      * to the Hoymiles per-port temporary limit register as percentage.
      *
      * Skalierung:
      * - Basis: maxTotalPowerW aus dem konfigurierten DeviceModel
-     * - percent = round(targetW / maxTotalPowerW * 100)
+     * - percent = round(effectiveTargetW / maxTotalPowerW * 100)
      *
-     * Zusätzliche Logik:
-     * - DeviceGeneration definiert minPercent:
-     *      Gen2: 10–100 %
-     *      Gen3:  2–100 %
-     * - Wenn gewünschter Prozentwert < minPercent:
-     *      → Wechselrichter wird OFF geschaltet (Port ON/OFF = 0)
+     * Zusätzliche Logik (generisch für alle Generationen):
+     * - DeviceGeneration.getMinPercent() liefert den unteren Arbeitsbereich [%]
+     *   z.B.:
+     *      GEN2: 10–100 %
+     *      GEN3:  2–100 %
+     *
+     * Verhalten:
      * - targetLimitW <= 0:
-     *      → ebenfalls OFF
+     *      → Wechselrichter AUS (einziger echter OFF-Fall)
+     * - targetLimitW > 0:
+     *      → auf minW klemmen, falls targetLimitW < minW
+     *         (minW = round(maxTotalPowerW * minPercent / 100))
+     *
+     * Hysterese:
+     * - Kleine Änderungen am Sollwert (in W) sollen nicht sofort neue
+     *   Modbus-Schreibvorgänge auslösen.
+     * - Wenn |effectiveTargetW - lastTargetLimitW| < LIMIT_HYSTERESIS_W, wird der neue
+     *   Sollwert ignoriert und nichts geschrieben.
      *
      * Schreib-Optimierung:
      * - portOnOff wird nur geschrieben, wenn sich der Zustand geändert hat.
      * - portTempLimitActivePower wird nur geschrieben, wenn sich der Prozentwert
      *   gegenüber lastWrittenLimitPercent geändert hat.
      *
-     * Hysterese:
-     * - Kleine Änderungen am Sollwert in W sollen nicht sofort neue
-     *   Modbus-Schreibvorgänge auslösen.
-     * - Wenn |targetLimitW - lastTargetLimitW| < 100 W, wird der neue
-     *   Sollwert ignoriert und nichts geschrieben.
+     * Fallback bei deaktivierten Controllern:
+     * - Wenn ManagedSymmetricPvInverter.ChannelId.ACTIVE_POWER_LIMIT INVALID ist
+     *   (kein Number), gilt: kein aktiver Controller → auf 100 % zurücksetzen.
      *
-     * Hinweis: Es wird nur etwas geschrieben, wenn der Channel einen gültigen Zahlenwert hat.
+     * Hinweis:
+     * - Detailinformationen zur Limit-Logik werden zentral über debugLog()
+     *   für ctrlDebugLog0 bereitgestellt.
      */
     private void applyActivePowerLimitFromChannel() {
         if (this.portTempLimitActivePower == null) {
             return; // sollte nicht passieren
         }
 
+        /*
+         * Fallback: kein aktiver Controller / Manager.
+         *
+         * Konvention (OpenEMS-typisch):
+         * - Der Manager schreibt den aggregierten Limit-Wert in
+         *   ManagedSymmetricPvInverter.ChannelId.ACTIVE_POWER_LIMIT.
+         * - Ist dieser Channel INVALID (kein Number), gibt es aktuell
+         *   keinen gültigen Limit-Vorgabewert eines Controllers.
+         *
+         * In diesem Fall:
+         * - WR sicher EIN schalten
+         * - 100 % Limit in das Hoymiles-Register schreiben
+         * - interne Hysterese-Zustände zurücksetzen
+         *
+         * Dadurch fällt der Wechselrichter bei deaktivierten
+         * Controllern automatisch auf "volle Leistung" zurück.
+         */
         Optional<?> opt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_W)
                 .value()
                 .asOptional();
 
+        /*
+         * Kein Sollwert vom Controller:
+         * - Bedeutet "kein externes Limit" -> wir wollen wieder auf 100 % zurück.
+         * - Aber nur dann schreiben, wenn vorher wirklich ein Limit gesetzt war
+         *   (lastWrittenLimitPercent != null && != 100).
+         */
         if (!opt.isPresent() || !(opt.get() instanceof Number)) {
-            // Kein Sollwert gesetzt -> nichts ändern
+            if (this.lastWrittenLimitPercent != null && this.lastWrittenLimitPercent.shortValue() != 100) {
+                DeviceModel model = (this.config != null) ? this.config.deviceModel() : null;
+                int maxTotalPowerW = (model != null) ? model.getMaxTotalPowerW() : 0;
+
+                if (maxTotalPowerW > 0) {
+                    // WR EIN + 100 %
+                    this.setPortOnOff(true);
+                    short pct = 100;
+
+                    this.portTempLimitActivePower.setNextWriteValue(Short.valueOf(pct));
+                    this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
+                            .setNextValue(Integer.valueOf(pct));
+
+                    this.lastWrittenLimitPercent = Short.valueOf(pct);
+                }
+            }
+
+            // Kein aktives Limit -> Hysterese zurücksetzen
+            this.lastTargetLimitW = null;
             return;
         }
 
@@ -663,27 +712,33 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
             minPercent = model.getGeneration().getMinPercent(); // z.B. 10 oder 2
         }
 
-        // Kein sinnvoller Max-Wert bekannt -> nur Ein/Aus interpretieren
+        /*
+         * Kein sinnvoller Max-Wert bekannt -> nur einfache Ein/Aus-Logik.
+         * Hier gibt es keine echte %-Limitierung, nur ON/OFF.
+         */
         if (maxTotalPowerW <= 0) {
             if (targetLimitW <= 0) {
                 // 0 W -> Wechselrichter AUS
                 this.setPortOnOff(false);
                 this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
                         .setNextValue(0);
-                this.lastWrittenLimitPercent = null;
-                this.lastTargetLimitW = null;
             } else {
                 // >0 W -> Wechselrichter EIN, aber ohne aktive Limitierung
                 this.setPortOnOff(true);
                 this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
                         .setNextValue(null);
-                this.lastWrittenLimitPercent = null;
-                this.lastTargetLimitW = null;
             }
+
+            // Keine Prozent-Limits im Gerät hinterlegt
+            this.lastWrittenLimitPercent = null;
+            this.lastTargetLimitW = null;
             return;
         }
 
-        // Explizit 0 W -> OFF
+        /*
+         * Explizit 0 W -> WR AUS.
+         * Das ist der einzige Fall, in dem wirklich abgeschaltet wird.
+         */
         if (targetLimitW <= 0) {
             this.setPortOnOff(false);
             this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
@@ -694,39 +749,50 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         }
 
         /*
+         * Mindestleistung in W aus DeviceGeneration ableiten.
+         * minPercent kommt direkt aus DeviceGeneration (GEN2, GEN3, future).
+         */
+        int minW = 0;
+        if (minPercent > 0) {
+            double minWExact = (maxTotalPowerW * (double) minPercent) / 100.0;
+            minW = (int) Math.round(minWExact);
+            if (minW <= 0) {
+                minW = 1; // Sicherheitsnetz, falls Rundung 0 ergäbe
+            }
+        }
+
+        int effectiveTargetW = targetLimitW;
+
+        // Wenn Sollwert kleiner als minimale Regelbarkeit ist, auf minW klemmen.
+        if (minW > 0 && targetLimitW < minW) {
+            effectiveTargetW = minW;
+        }
+
+        /*
          * Hysterese in W:
-         * Wenn sich der Sollwert nur geringfügig gegenüber dem zuletzt
-         * übernommenen Wert ändert, ignorieren wir die Änderung komplett,
-         * um die Schreibfrequenz zu reduzieren.
+         * Nur dann neue Werte schreiben, wenn sich der effektive Sollwert
+         * um mindestens LIMIT_HYSTERESIS_W verändert hat.
          */
         if (this.lastTargetLimitW != null) {
-            int deltaW = Math.abs(targetLimitW - this.lastTargetLimitW.intValue());
-            if (deltaW < 100) {
-                // Änderung < 100 W -> keine neue Modbus-Schreiboperation
-                if (this.logger.isDebugEnabled()) {
-                    this.logger.debug("[{}] Skip limit update: targetLimitW={} W delta={} W < 100 W",
-                            this.id(), Integer.valueOf(targetLimitW), Integer.valueOf(deltaW));
-                }
+            int deltaW = Math.abs(effectiveTargetW - this.lastTargetLimitW.intValue());
+            if (deltaW < LIMIT_HYSTERESIS_W) {
                 return;
             }
         }
 
-        double ratio = (double) targetLimitW / (double) maxTotalPowerW;
+        /*
+         * W -> % umrechnen.
+         */
+        double ratio = (double) effectiveTargetW / (double) maxTotalPowerW;
         double percD = ratio * 100.0;
         int percent = (int) Math.round(percD);
 
         if (percent > 100) {
             percent = 100;
         }
-
-        // Unterhalb des Arbeitsbereichs der DeviceGeneration -> WR AUS
         if (minPercent > 0 && percent < minPercent) {
-            this.setPortOnOff(false);
-            this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
-                    .setNextValue(0);
-            this.lastWrittenLimitPercent = null;
-            this.lastTargetLimitW = null;
-            return;
+            // zusätzliche Absicherung gegen Rundungsfehler
+            percent = minPercent;
         }
 
         // Normalfall: innerhalb des Bereichs -> WR EIN + Limit
@@ -745,11 +811,10 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
             this.lastWrittenLimitPercent = Short.valueOf(newPercentShort);
         }
 
-        // Diesen Sollwert in W als Basis für die nächste Hysterese merken
-        this.lastTargetLimitW = Integer.valueOf(targetLimitW);
+        // Diesen effektiven Sollwert in W als Basis für die nächste Hysterese merken
+        this.lastTargetLimitW = Integer.valueOf(effectiveTargetW);
     }
 
-    
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Modbus / Meter
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -992,4 +1057,94 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
                 ? MeterType.PRODUCTION
                 : MeterType.CONSUMPTION_NOT_METERED;
     }
+
+    /**
+     * Liefert eine kompakte Debug-Zeile für ctrlDebugLog0 mit allen
+     * Regel-/Statusinformationen.
+     */
+    @Override
+    public String debugLog() {
+        // globaler Schalter
+        if (!INTERNAL_DEBUG) {
+            return "";
+        }
+
+        StringBuilder sb = new StringBuilder();
+
+        // Basisinfo: MI-Nummer
+        sb.append("MI#").append(this.microinverterNumber);
+
+        /*
+         * Konfiguration / Enums:
+         * - DeviceModel (liefert maxTotalPowerW + Generation)
+         * - Generation (liefert minPercent)
+         * - Phase + Drei-Phasen-Flag
+         */
+        DeviceModel model = (this.config != null) ? this.config.deviceModel() : null;
+        PvInverterHoymilesHMSHMT.Phase phase = (this.config != null) ? this.config.phase() : null;
+        boolean threePhaseDevice = model != null && model.isThreePhase();
+
+        Integer maxTotalPowerW = null;
+        Integer minPercent = null;
+        if (model != null) {
+            maxTotalPowerW = Integer.valueOf(model.getMaxTotalPowerW());
+            if (model.getGeneration() != null) {
+                minPercent = Integer.valueOf(model.getGeneration().getMinPercent());
+            }
+        }
+
+        sb.append("|model=").append(model != null ? model.name() : "-");
+        sb.append("|genMin%=").append(minPercent != null ? minPercent : "-");
+        sb.append("|3ph=").append(threePhaseDevice ? "Y" : "N");
+        sb.append("|phase=").append(phase != null ? phase.name() : "-");
+        sb.append("|maxP=").append(maxTotalPowerW != null ? maxTotalPowerW : "-").append("W");
+
+        /*
+         * Regelrelevante Kanäle:
+         * - aktuelle AC-Leistung
+         * - Leistungs-Limit in W (Sollwert vom Controller)
+         * - Leistungs-Limit in % (berechnet + geschrieben)
+         */
+        String pAcW = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ACTIVE_POWER_W)
+                .value().asString();
+        String limitW = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_W)
+                .value().asString();
+        String limitPercentCh = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
+                .value().asString();
+
+        sb.append("|P_ac=").append(pAcW);            // z.B. "800 W"
+        sb.append("|LimitW_ch=").append(limitW);     // z.B. "500 W"
+        sb.append("|Limit%_ch=").append(limitPercentCh); // z.B. "33 %"
+
+        /*
+         * Interne Werte der Limit-Regelung:
+         * - lastTargetLimitW          = letzter effektiver Zielwert in W (nach minW/Hysterese)
+         * - lastWrittenLimitPercent   = zuletzt tatsächlich geschriebener Prozentwert
+         * - lastWrittenPortOn         = zuletzt geschriebenes ON/OFF am Port-Register
+         */
+        sb.append("|lastEffW=").append(this.lastTargetLimitW != null ? this.lastTargetLimitW : "-");
+        sb.append("|lastPct=").append(this.lastWrittenLimitPercent != null ? this.lastWrittenLimitPercent : "-");
+        sb.append("|portOn=").append(
+                this.lastWrittenPortOn != null ? (this.lastWrittenPortOn.booleanValue() ? "1" : "0") : "-");
+
+        /*
+         * Zustands-/Alarm-Infos:
+         * - Health-State (OK/WARNING/FAULT/NO_DATA)
+         * - interpretierter Status (PRODUCING/STANDBY/...)
+         * - zusammengefasste Alarmbits
+         */
+        String health = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_HEALTH_STATE)
+                .value().asString();
+        String interpretedStatus = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_INTERPRETED_STATUS)
+                .value().asString();
+        String alarmSummary = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM_SUMMARY)
+                .value().asString();
+
+        sb.append("|health=").append(health);
+        sb.append("|status=").append(interpretedStatus);
+        sb.append("|alarms=").append(alarmSummary);
+
+        return sb.toString();
+    }
 }
+
