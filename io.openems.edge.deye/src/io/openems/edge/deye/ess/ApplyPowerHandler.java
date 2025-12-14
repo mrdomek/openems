@@ -76,11 +76,9 @@ public class ApplyPowerHandler {
 			this.writeFlags();
 
 			this.ess.setSetRemoteMode(1);
-			this.ess.setSetRemoteWatchdogTime(600);
+			this.ess.setSetRemoteWatchdogTime(120);
 
 			// Einmaliges Setzen der Modi (Registers 1102-1110)
-			this.ess.setFuckOff1(0);
-			this.ess.setFuckOff2(0);
 			this.ess.setSetControlMode(0);
 			this.ess.setSetBatteryControlMode(2);
 			this.ess.setSet3PControlMode(0);

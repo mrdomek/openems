@@ -167,7 +167,7 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 		}
 
 		this.config = config;
-		this.setWorkState(WorkState.UNDEFINED);
+		this._setWorkState(WorkState.UNDEFINED); //mrdomek: internal state channel
 	}
 
 	@Override
@@ -285,21 +285,20 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 					new FC16WriteRegistersTask(1100,
 							m(DeyeSunHybrid.ChannelId.SET_REMOTE_MODE, new UnsignedWordElement(1100)),
 							m(DeyeSunHybrid.ChannelId.SET_REMOTE_WATCHDOG_TIME, new UnsignedWordElement(1101)),
-							m(DeyeSunHybrid.ChannelId.FUCKOFF_1, new UnsignedWordElement(1102)),
-							m(DeyeSunHybrid.ChannelId.FUCKOFF_2, new UnsignedWordElement(1103)),						
-							m(DeyeSunHybrid.ChannelId.SET_CONTROL_MODE, new UnsignedWordElement(1104)),  // set 1 for battery control (DC); set 0 for AC-control
-							m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONTROL_MODE, new UnsignedWordElement(1105)),  // set 2 for for percentage control (reg 1109); set 3 for SOC control (reg 1110)
-							m(DeyeSunHybrid.ChannelId.SET_3P_CONTROL_MODE, new UnsignedWordElement(1106)),  // set 0 for 3p control via reg. 1111						
+							new DummyRegisterElement(1102, 1103), //mrdomek: 1A/1B removed -> keep address space reserved
+							m(DeyeSunHybrid.ChannelId.SET_CONTROL_MODE, new UnsignedWordElement(1104)), // set 1 for battery control (DC); set 0 for AC-control
+							m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONTROL_MODE, new UnsignedWordElement(1105)), // set 2 for percentage control; set 3 for SOC control
+							m(DeyeSunHybrid.ChannelId.SET_3P_CONTROL_MODE, new UnsignedWordElement(1106)), // set 0 for 3p control via reg. 1111
 							m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONSTANT_VOLTAGE, new UnsignedWordElement(1107),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),  // set 0 for 3p control via reg. 1111; mrdomek: scale adjusted to 0.1 V as in Deye doc
+									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
 							m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONSTANT_CURRENT, new UnsignedWordElement(1108),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),  // set 0 for 3p control via reg. 1111; mrdomek: scale adjusted to 0.1 A as in Deye doc
+									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
 							m(DeyeSunHybrid.ChannelId.SET_BATTERY_POWER_PERCENT, new SignedWordElement(1109),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),  // set battery power as percentage from inverter power; mrdomek: scale adjusted to 0.1 % as in Deye doc
+									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
 							m(DeyeSunHybrid.ChannelId.SET_BATTERY_POWER_SOC, new SignedWordElement(1110),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),  // set battery power as SoC percentage
-							m(DeyeSunHybrid.ChannelId.SET_AC_SETPOINT_3P_PERCENT, new SignedWordElement(1111)) // set total AC power for all phases // mrdomek: write raw 0.1% units, no additional scaling
-							),  
+									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
+							m(DeyeSunHybrid.ChannelId.SET_AC_SETPOINT_3P_PERCENT, new SignedWordElement(1111))
+					),
 
 							// ToDo: add register for individual phase control
 					// Read registers
@@ -338,42 +337,49 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 
 							// Generator / grid charge settings
 							m(DeyeSunHybrid.ChannelId.GENERATOR_MAX_OPERATING_TIME, new UnsignedWordElement(121),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),  // mrdomek: scale adjusted to 0.1 h as in Deye doc
+									ElementToChannelConverter.SCALE_FACTOR_MINUS_1), // existing
+									//mrdomek: Deye doc says 0.1 h => keep /10 if channel expects 0.1h as decimal; verify UI/unit later
 							m(DeyeSunHybrid.ChannelId.GENERATOR_COOLING_TIME, new UnsignedWordElement(122),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),  // mrdomek: scale adjusted to 0.1 h as in Deye doc
+									ElementToChannelConverter.SCALE_FACTOR_MINUS_1), // existing
+									//mrdomek: Deye doc says 0.1 h => keep /10 if channel expects 0.1h as decimal; verify UI/unit later
+
 							m(DeyeSunHybrid.ChannelId.GENERATOR_CHARGING_START_VOLTAGE, new UnsignedWordElement(123),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_2),  // mrdomek: scale adjusted to 0.01 V as in Deye doc
-							m(DeyeSunHybrid.ChannelId.GENERATOR_CHARGING_START_CAPACITY, new UnsignedWordElement(124),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_2),  // mrdomek: scale adjusted to 0.01 (capacity) as in Deye doc
+									ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: 0.01 V raw -> mV integer => *10 (e.g. 4900 -> 49000 mV)
+							m(DeyeSunHybrid.ChannelId.GENERATOR_CHARGING_START_CAPACITY, new UnsignedWordElement(124)),
+									//mrdomek: Deye doc says 1% => keep as percent integer (no scaling)
+
 							m(DeyeSunHybrid.ChannelId.GENERATOR_CHARGE_CURRENT, new UnsignedWordElement(125)),
+
 							m(DeyeSunHybrid.ChannelId.GRID_CHARGING_START_VOLTAGE, new UnsignedWordElement(126),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_2),  // mrdomek: scale adjusted to 0.01 V as in Deye doc
-							m(DeyeSunHybrid.ChannelId.GRID_CHARGING_START_CAPACITY, new UnsignedWordElement(127),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_2),  // mrdomek: scale adjusted to 0.01 (capacity) as in Deye doc
+									ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: 0.01 V raw -> mV integer => *10 (e.g. 4900 -> 49000 mV)
+							m(DeyeSunHybrid.ChannelId.GRID_CHARGING_START_CAPACITY, new UnsignedWordElement(127)),
+									//mrdomek: Deye doc says 1% => keep as percent integer (no scaling)
+
 							m(DeyeSunHybrid.ChannelId.GRID_CHARGE_CURRENT, new UnsignedWordElement(128)),
 							m(DeyeSunHybrid.ChannelId.GENERATOR_CHARGING_ENABLE, new UnsignedWordElement(129)),
 							m(DeyeSunHybrid.ChannelId.GRID_CHARGING_ENABLE, new UnsignedWordElement(130)),
 
 							// Power management and sell mode settings
 							m(DeyeSunHybrid.ChannelId.AC_COUPLE_FREQUENCY_LIMIT, new UnsignedWordElement(131),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),  // mrdomek: scale adjusted to 0.1 as in Deye doc
+									ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: range 5000..6500 => 50.00..65.00 Hz (0.01 Hz); convert to mHz integer => *10
 							m(DeyeSunHybrid.ChannelId.FORCE_GENERATOR_AS_LOAD, new UnsignedWordElement(132)),
 							m(DeyeSunHybrid.ChannelId.GENERATOR_INPUT_AS_LOAD_ENABLE, new UnsignedWordElement(133)),
+
 							m(DeyeSunHybrid.ChannelId.SMARTLOAD_OFF_BATT_VOLTAGE, new UnsignedWordElement(134),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_2),  // mrdomek: scale adjusted to 0.01 V as in Deye doc
-							m(DeyeSunHybrid.ChannelId.SMARTLOAD_OFF_BATT_CAPACITY, new UnsignedWordElement(135),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_2),  // mrdomek: scale adjusted to 0.01 (capacity) as in Deye doc
+									ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: 0.01 V raw -> mV integer => *10
+							m(DeyeSunHybrid.ChannelId.SMARTLOAD_OFF_BATT_CAPACITY, new UnsignedWordElement(135)),
+									//mrdomek: Deye doc says 1% => keep as percent integer (no scaling)
+
 							m(DeyeSunHybrid.ChannelId.SMARTLOAD_ON_BATT_VOLTAGE, new UnsignedWordElement(136),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_2),  // mrdomek: scale adjusted to 0.01 V as in Deye doc
-							m(DeyeSunHybrid.ChannelId.SMARTLOAD_ON_BATT_CAPACITY, new UnsignedWordElement(137),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_2),  // mrdomek: scale adjusted to 0.01 (capacity) as in Deye doc
+									ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: 0.01 V raw -> mV integer => *10
+							m(DeyeSunHybrid.ChannelId.SMARTLOAD_ON_BATT_CAPACITY, new UnsignedWordElement(137)),
+									//mrdomek: Deye doc says 1% => keep as percent integer (no scaling)
+
 							m(DeyeSunHybrid.ChannelId.OUTPUT_VOLTAGE_LEVEL, new UnsignedWordElement(138)),
 							m(DeyeSunHybrid.ChannelId.MIN_SOLAR_POWER_TO_START_GENERATOR, new UnsignedWordElement(139)),
 							m(DeyeSunHybrid.ChannelId.GEN_GRID_SIGNAL_ON, new UnsignedWordElement(140)),
 							m(DeyeSunHybrid.ChannelId.ENERGY_MANAGEMENT_MODEL, new UnsignedWordElement(141)),
 							m(DeyeSunHybrid.ChannelId.LIMIT_CONTROL_FUNCTION, new UnsignedWordElement(142)),
-							// m(DeyeSunHybrid.ChannelId.LIMIT_MAX_GRID_OUTPUT_POWER,new
-							// UnsignedWordElement(143)),
 							m(DeyeSunHybrid.ChannelId.POWER_TO_GRID_TARGET, new UnsignedWordElement(143)),
 							m(DeyeSunHybrid.ChannelId.EXTERNAL_CURRENT_SENSOR_CLAMP_PHASE, new UnsignedWordElement(144)),
 							m(DeyeSunHybrid.ChannelId.SOLAR_SELL_MODE, new UnsignedWordElement(145))),
@@ -485,22 +491,21 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 					new FC3ReadRegistersTask(1100, Priority.LOW,
 							m(DeyeSunHybrid.ChannelId.SET_REMOTE_MODE, new UnsignedWordElement(1100)),
 							m(DeyeSunHybrid.ChannelId.SET_REMOTE_WATCHDOG_TIME, new UnsignedWordElement(1101)),
-							m(DeyeSunHybrid.ChannelId.FUCKOFF_1, new UnsignedWordElement(1102)),
-							m(DeyeSunHybrid.ChannelId.FUCKOFF_2, new UnsignedWordElement(1103)),						
-							m(DeyeSunHybrid.ChannelId.SET_CONTROL_MODE, new UnsignedWordElement(1104)),  // set 1 for battery control (DC); set 0 for AC-control
-							m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONTROL_MODE, new UnsignedWordElement(1105)),  // set 2 for for percentage control (reg 1109); set 3 for SOC control (reg 1110)
-							m(DeyeSunHybrid.ChannelId.SET_3P_CONTROL_MODE, new UnsignedWordElement(1106)),  // set 0 for 3p control via reg. 1111						
+							new DummyRegisterElement(1102, 1103), //mrdomek: 1A/1B removed -> keep address space reserved
+							m(DeyeSunHybrid.ChannelId.SET_CONTROL_MODE, new UnsignedWordElement(1104)),
+							m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONTROL_MODE, new UnsignedWordElement(1105)),
+							m(DeyeSunHybrid.ChannelId.SET_3P_CONTROL_MODE, new UnsignedWordElement(1106)),
 							m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONSTANT_VOLTAGE, new UnsignedWordElement(1107),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),  // set 0 for 3p control via reg. 1111; mrdomek: scale adjusted to 0.1 V as in Deye doc
+									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
 							m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONSTANT_CURRENT, new UnsignedWordElement(1108),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),  // set 0 for 3p control via reg. 1111; mrdomek: scale adjusted to 0.1 A as in Deye doc
+									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
 							m(DeyeSunHybrid.ChannelId.SET_BATTERY_POWER_PERCENT, new SignedWordElement(1109),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),  // set battery power as percentage from inverter power; mrdomek: scale adjusted to 0.1 % as in Deye doc
+									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
 							m(DeyeSunHybrid.ChannelId.SET_BATTERY_POWER_SOC, new SignedWordElement(1110),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),  // set battery power as SoC percentage; mrdomek: read-back scale aligned with write register
+									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
 							m(DeyeSunHybrid.ChannelId.SET_AC_SETPOINT_3P_PERCENT, new SignedWordElement(1111),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1))  // set total AC power for all phases; mrdomek: scale adjusted to 0.1 % as in Deye doc
-									);						
+									ElementToChannelConverter.SCALE_FACTOR_MINUS_1))
+					);
 	}
 
 
@@ -652,7 +657,7 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 				return;
 			}
 
-			this.setWorkState(WorkState.NORMAL);
+			this._setWorkState(WorkState.NORMAL);
 
 		}
 	}
@@ -676,7 +681,7 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 			return false;
 		}
 		
-		this.setWorkState(nextState);
+		this._setWorkState(nextState);
 		return true;
 	}
 	
@@ -895,3 +900,4 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 	}
 
 }
+
