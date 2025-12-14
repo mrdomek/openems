@@ -514,14 +514,23 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 		return Stream
 				.of(DeyeSunHybrid.ChannelId.values(), SymmetricEss.ChannelId.values(),
 						ManagedSymmetricEss.ChannelId.values(), HybridEss.ChannelId.values())
-				.flatMap(Arrays::stream).map(id -> {
+				.flatMap(Arrays::stream)
+				.map(id -> {
 					try {
+						// mrdomek: Only print channels that currently have a value, otherwise debug output is dominated by UNDEFINED.
+						var opt = this.channel(id).value().asOptional();
+						if (opt == null || !opt.isPresent()) {
+							return null;
+						}
 						return id.name() + "=" + this.channel(id).value().asString();
 					} catch (Exception e) {
 						return id.name() + "=n/a";
 					}
-				}).collect(Collectors.joining("; \n"));
+				})
+				.filter(s -> s != null)
+				.collect(Collectors.joining("; \n"));
 	}
+
 
 	/**
 	 * Uses Info Log for further debug features.

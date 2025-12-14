@@ -12,7 +12,7 @@ import io.openems.edge.ess.generic.common.AbstractAllowedChargeDischargeHandler;
 
 public class AllowedChargeDischargeHandler extends AbstractAllowedChargeDischargeHandler<DeyeSunHybridImpl> {
 
-	private DeyeSunBattery battery;
+	private final DeyeSunBattery battery;
 	private final Logger log;
 
 	public AllowedChargeDischargeHandler(DeyeSunHybridImpl parent, DeyeSunBattery battery, DeyeDcCharger dcCharger) {
@@ -23,9 +23,7 @@ public class AllowedChargeDischargeHandler extends AbstractAllowedChargeDischarg
 
 	@Override
 	public void accept(ClockProvider clockProvider, Battery battery, SymmetricBatteryInverter inverter) {
-
 		if (battery == null) {
-
 			parent._setAllowedChargePower(0);
 			parent._setAllowedDischargePower(0);
 			return;
@@ -34,66 +32,76 @@ public class AllowedChargeDischargeHandler extends AbstractAllowedChargeDischarg
 	}
 
 	/**
-	 * Calculates AllowedChargePower and AllowedDischargePower and sets the
-	 * Channels.
+	 * Calculates AllowedChargePower and AllowedDischargePower and sets the Channels.
 	 *
 	 * @param clockProvider a {@link ClockProvider}
 	 */
 	public void accept(ClockProvider clockProvider) {
-
-		if (battery == null) {
-		    parent._setAllowedChargePower(0);
-		    parent._setAllowedDischargePower(0);
-		    return;
-		    
-		}
-		
-		// values from BMS regarding hardware limits
-		//Integer bmsMaxChargeCurrent = this.battery.getChargeMaxCurrent().get(); // A
-		//Integer bmsMaxDischargeCurrent = this.battery.getDischargeMaxCurrent().get(); // A
-		
-		Integer bmsMaxChargeCurrent = this.battery.getBmsChargeCurrentLimit().get();
-		Integer bmsMaxDischargeCurrent = this.battery.getBmsDischargeCurrentLimit().get();
-		Integer bmsVoltage = this.battery.getBatteryVoltage().orElse(0); // mV
-		
-		// configured values - cannot be used as we use these channels for battery controlling
-		Integer configuredBatteryMaxChargeCurrent = this.battery.getConfiguredMaxChargeCurrent(); // A
-		Integer configuredBatteryMaxDischargeCurrent = this.battery.getConfiguredMaxDischargeCurrent(); // A
-		
-
-		if (bmsMaxChargeCurrent == null || bmsMaxDischargeCurrent == null || bmsVoltage == null ) {
-			this.parent.logDebug(log, "[AllowChargeDischarge Handler] BMS values not available. Setting 0 W.");
-	        parent._setAllowedChargePower(0);
-	        parent._setAllowedDischargePower(0);
+		if (this.battery == null) {
+			parent._setAllowedChargePower(0);
+			parent._setAllowedDischargePower(0);
 			return;
-		}		
-		
-		double voltage = bmsVoltage / 1000.0;		
-		
-	    int maxChargeCurrent = Math.min((bmsMaxChargeCurrent),configuredBatteryMaxChargeCurrent); // A
-	    int maxDischargeCurrent =  Math.min((bmsMaxDischargeCurrent),configuredBatteryMaxDischargeCurrent); // A
-		
-	    // 
-	    double allowedChargePower = maxChargeCurrent * voltage * -1; // negative for charging
-	    double allowedDischargePower = maxDischargeCurrent * voltage; // positive for discharging
+		}
 
+		// Dynamic limits (reported by inverter/BMS path) – register 212/213
+		Integer dynChargeA = this.battery.getDynamicChargeCurrentLimit().get();
+		Integer dynDischargeA = this.battery.getDynamicDischargeCurrentLimit().get();
 
-		this.parent.logDebug(log,"[AllowChargeDischarge Handler] max. ChargeCurrent  " + maxChargeCurrent 
-		+ "A maxDischargeCurrent: " + maxDischargeCurrent 
-		+ "A Voltage:"  + voltage  
-		+ "V Allowed Charge Power "+ allowedChargePower
-		+ "W/Allowed Discharge Power "+ allowedDischargePower
-	
-		 );
+		// Manual limits (set in inverter) – register 108/109
+		Integer manualChargeA = this.battery.getManualChargeCurrentLimit().get();
+		Integer manualDischargeA = this.battery.getManualDischargeCurrentLimit().get();
 
-		// PV-Production
+		// Battery voltage (as provided by your battery implementation)
+		Integer batteryVoltageRaw = this.battery.getBatteryVoltage().orElse(0);
+
+		if (dynChargeA == null || dynDischargeA == null || batteryVoltageRaw == null) {
+			this.parent.logDebug(log, "[AllowChargeDischarge Handler] Required values not available. Setting 0 W.");
+			parent._setAllowedChargePower(0);
+			parent._setAllowedDischargePower(0);
+			return;
+		}
+
+		/*
+		 * Apply min() logic:
+		 * - If manual limit is configured (>0), it caps the dynamic limit.
+		 * - If manual is null/0, use dynamic limit as-is.
+		 */
+		int effChargeA = dynChargeA;
+		if (manualChargeA != null && manualChargeA > 0) {
+			effChargeA = Math.min(dynChargeA, manualChargeA);
+		}
+
+		int effDischargeA = dynDischargeA;
+		if (manualDischargeA != null && manualDischargeA > 0) {
+			effDischargeA = Math.min(dynDischargeA, manualDischargeA);
+		}
+
+		/*
+		 * Voltage handling:
+		 * NOTE: keep your existing behavior for now to stay minimal-invasive.
+		 * If your BATTERY_VOLTAGE channel is already scaled to V, this is fine.
+		 * If it's mV, we adjust later once confirmed.
+		 */
+		double voltage = batteryVoltageRaw / 1000.0;
+
+		double allowedChargePower = effChargeA * voltage * -1;     // negative for charging
+		double allowedDischargePower = effDischargeA * voltage;    // positive for discharging
+
+		this.parent.logDebug(log,
+				"[AllowChargeDischarge Handler] dynCharge=" + dynChargeA + "A manualCharge=" + manualChargeA + "A effCharge=" + effChargeA + "A; "
+				+ "dynDischarge=" + dynDischargeA + "A manualDischarge=" + manualDischargeA + "A effDischarge=" + effDischargeA + "A; "
+				+ "U=" + voltage + "V; "
+				+ "AllowedCharge=" + allowedChargePower + "W; AllowedDischarge=" + allowedDischargePower + "W");
+
+		// PV-Production (kept as-is from your code)
 		var pvProduction = Math.max(//
 				TypeUtils.orElse(//
 						TypeUtils.subtract(this.parent.getActivePower().get(), this.parent.getDcDischargePower().get()), //
 						0),
 				0);
+
 		// Apply AllowedChargePower and AllowedDischargePower
-		this.parent._setAllowedChargePower((int) allowedChargePower); // 0 or negative
+		this.parent._setAllowedChargePower((int) allowedChargePower);                   // 0 or negative
 		this.parent._setAllowedDischargePower((int) allowedDischargePower + pvProduction); // positive
 	}
 }
