@@ -226,287 +226,293 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 		return new ModbusProtocol(this, //
 
 				new FC16WriteRegistersTask(128,
-						m(DeyeSunHybrid.ChannelId.SET_GRID_CHARGE_CURRENT, new UnsignedWordElement(128)),
+						m(DeyeSunHybrid.ChannelId.SET_GRID_CHARGE_CURRENT, new UnsignedWordElement(128),
+								ElementToChannelConverter.SCALE_FACTOR_MINUS_3), //mrdomek: channel is mA, register is 1A -> /1000
 						m(DeyeSunHybrid.ChannelId.SET_GENERATOR_CHARGING_ENABLE, new UnsignedWordElement(129)),
 						m(DeyeSunHybrid.ChannelId.SET_GRID_CHARGING_ENABLE, new UnsignedWordElement(130)),
-						new DummyRegisterElement(131,140),
+						new DummyRegisterElement(131, 140),
 						m(DeyeSunHybrid.ChannelId.ENERGY_MANAGEMENT_MODEL, new UnsignedWordElement(141)),
 						m(DeyeSunHybrid.ChannelId.LIMIT_CONTROL_FUNCTION, new UnsignedWordElement(142)),
 						m(DeyeSunHybrid.ChannelId.POWER_TO_GRID_TARGET, new UnsignedWordElement(143)),
 						new DummyRegisterElement(144),
 						m(DeyeSunHybrid.ChannelId.SOLAR_SELL_MODE, new UnsignedWordElement(145))),
-					// m(DeyeSunHybrid.ChannelId.SET_TIME_OF_USE_SELLING_ENABLED, new
-					// UnsignedWordElement(146)),
-					new FC16WriteRegistersTask(146,
-							m(new BitsWordElement(146, this).bit(0, DeyeSunHybrid.ChannelId.SET_TIME_OF_USE_SELLING_ENABLED) // Common
-																																// switch
-									.bit(1, DeyeSunHybrid.ChannelId.SET_TIME_OF_USE_MONDAY) //
-									.bit(2, DeyeSunHybrid.ChannelId.SET_TIME_OF_USE_TUESDAY) //
-									.bit(3, DeyeSunHybrid.ChannelId.SET_TIME_OF_USE_WEDNESDAY) //
-									.bit(4, DeyeSunHybrid.ChannelId.SET_TIME_OF_USE_THURSDAY) //
-									.bit(5, DeyeSunHybrid.ChannelId.SET_TIME_OF_USE_FRIDAY) //
-									.bit(6, DeyeSunHybrid.ChannelId.SET_TIME_OF_USE_SATURDAY) //
-									.bit(7, DeyeSunHybrid.ChannelId.SET_TIME_OF_USE_SUNDAY) //
+				// m(DeyeSunHybrid.ChannelId.SET_TIME_OF_USE_SELLING_ENABLED, new
+				// UnsignedWordElement(146)),
+				new FC16WriteRegistersTask(146,
+						m(new BitsWordElement(146, this).bit(0, DeyeSunHybrid.ChannelId.SET_TIME_OF_USE_SELLING_ENABLED) // Common
+																														// switch
+								.bit(1, DeyeSunHybrid.ChannelId.SET_TIME_OF_USE_MONDAY) //
+								.bit(2, DeyeSunHybrid.ChannelId.SET_TIME_OF_USE_TUESDAY) //
+								.bit(3, DeyeSunHybrid.ChannelId.SET_TIME_OF_USE_WEDNESDAY) //
+								.bit(4, DeyeSunHybrid.ChannelId.SET_TIME_OF_USE_THURSDAY) //
+								.bit(5, DeyeSunHybrid.ChannelId.SET_TIME_OF_USE_FRIDAY) //
+								.bit(6, DeyeSunHybrid.ChannelId.SET_TIME_OF_USE_SATURDAY) //
+								.bit(7, DeyeSunHybrid.ChannelId.SET_TIME_OF_USE_SUNDAY) //
 
-							),
-
-							new DummyRegisterElement(147),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_1, new UnsignedWordElement(148)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_2, new UnsignedWordElement(149)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_3, new UnsignedWordElement(150)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_4, new UnsignedWordElement(151)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_5, new UnsignedWordElement(152)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_6, new UnsignedWordElement(153)),
-
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_1_POWER, new UnsignedWordElement(154)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_2_POWER, new UnsignedWordElement(155)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_3_POWER, new UnsignedWordElement(156)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_4_POWER, new UnsignedWordElement(157)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_5_POWER, new UnsignedWordElement(158)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_6_POWER, new UnsignedWordElement(159)),
-							new DummyRegisterElement(160, 165),
-
-							//
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_1_CAPACITY, new UnsignedWordElement(166)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_2_CAPACITY, new UnsignedWordElement(167)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_3_CAPACITY, new UnsignedWordElement(168)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_4_CAPACITY, new UnsignedWordElement(169)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_5_CAPACITY, new UnsignedWordElement(170)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_6_CAPACITY, new UnsignedWordElement(171)),
-
-							// Bit 0 -> Charge from grid enabled, Bit 1 -> Charge from generator
-							m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_1, new UnsignedWordElement(172)),
-							m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_2, new UnsignedWordElement(173)),
-							m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_3, new UnsignedWordElement(174)),
-							m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_4, new UnsignedWordElement(175)),
-							m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_5, new UnsignedWordElement(176)),
-							m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_6, new UnsignedWordElement(177))),
-					
-					new FC16WriteRegistersTask(1100,
-							m(DeyeSunHybrid.ChannelId.SET_REMOTE_MODE, new UnsignedWordElement(1100)),
-							m(DeyeSunHybrid.ChannelId.SET_REMOTE_WATCHDOG_TIME, new UnsignedWordElement(1101)),
-							new DummyRegisterElement(1102, 1103), //mrdomek: 1A/1B removed -> keep address space reserved
-							m(DeyeSunHybrid.ChannelId.SET_CONTROL_MODE, new UnsignedWordElement(1104)), // set 1 for battery control (DC); set 0 for AC-control
-							m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONTROL_MODE, new UnsignedWordElement(1105)), // set 2 for percentage control; set 3 for SOC control
-							m(DeyeSunHybrid.ChannelId.SET_3P_CONTROL_MODE, new UnsignedWordElement(1106)), // set 0 for 3p control via reg. 1111
-							m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONSTANT_VOLTAGE, new UnsignedWordElement(1107),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
-							m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONSTANT_CURRENT, new UnsignedWordElement(1108),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
-							m(DeyeSunHybrid.ChannelId.SET_BATTERY_POWER_PERCENT, new SignedWordElement(1109),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
-							m(DeyeSunHybrid.ChannelId.SET_BATTERY_POWER_SOC, new SignedWordElement(1110),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
-							m(DeyeSunHybrid.ChannelId.SET_AC_SETPOINT_3P_PERCENT, new SignedWordElement(1111))
-					),
-
-							// ToDo: add register for individual phase control
-					// Read registers
-
-					new FC3ReadRegistersTask(1, Priority.LOW,
-							m(SymmetricEss.ChannelId.GRID_MODE, new UnsignedWordElement(1)), new DummyRegisterElement(2),
-							m(DeyeSunHybrid.ChannelId.SERIAL_NUMBER, new StringWordElement(3, 5)),
-							new DummyRegisterElement(8, 19),
-							m(SymmetricEss.ChannelId.MAX_APPARENT_POWER,
-									new UnsignedDoublewordElement(20).wordOrder(WordOrder.LSWMSW),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1)),
-
-					new FC3ReadRegistersTask(60, Priority.LOW,
-
-							m(DeyeSunHybrid.ChannelId.REMOTE_LOCK_STATE, new UnsignedWordElement(60)),
-
-							new DummyRegisterElement(61, 76),
-							
-							m(DeyeSunHybrid.ChannelId.ACTIVE_POWER_REGULATION, new SignedWordElement(77),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
-							m(DeyeSunHybrid.ChannelId.REACTIVE_POWER_REGULATION, new SignedWordElement(78),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
-							m(DeyeSunHybrid.ChannelId.APPARENT_POWER_REGULATION, new SignedWordElement(79),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
-							m(DeyeSunHybrid.ChannelId.ENABLE_SWITCH_STATE, new UnsignedWordElement(80)),
-							m(DeyeSunHybrid.ChannelId.FACTORY_RESET_STATE, new UnsignedWordElement(81)),
-							m(DeyeSunHybrid.ChannelId.SELF_CHECKING_TIME, new SignedWordElement(82)),
-							m(DeyeSunHybrid.ChannelId.ISLAND_PROTECTION_ENABLE, new SignedWordElement(83)),
-							m(DeyeSunHybrid.ChannelId.MPPT_NUMBER, new UnsignedWordElement(84)),
-							m(DeyeSunHybrid.ChannelId.GFDI_STATE, new SignedWordElement(85)), // What is this?
-
-							new DummyRegisterElement(86),
-							m(DeyeSunHybrid.ChannelId.RISO_STATE, new UnsignedWordElement(87)), // What is this?
-							m(DeyeSunHybrid.ChannelId.GRID_STANDARD, new SignedWordElement(88)), //
-							new DummyRegisterElement(89, 120),
-
-							// Generator / grid charge settings
-							m(DeyeSunHybrid.ChannelId.GENERATOR_MAX_OPERATING_TIME, new UnsignedWordElement(121),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1), // existing
-									//mrdomek: Deye doc says 0.1 h => keep /10 if channel expects 0.1h as decimal; verify UI/unit later
-							m(DeyeSunHybrid.ChannelId.GENERATOR_COOLING_TIME, new UnsignedWordElement(122),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1), // existing
-									//mrdomek: Deye doc says 0.1 h => keep /10 if channel expects 0.1h as decimal; verify UI/unit later
-
-							m(DeyeSunHybrid.ChannelId.GENERATOR_CHARGING_START_VOLTAGE, new UnsignedWordElement(123),
-									ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: 0.01 V raw -> mV integer => *10 (e.g. 4900 -> 49000 mV)
-							m(DeyeSunHybrid.ChannelId.GENERATOR_CHARGING_START_CAPACITY, new UnsignedWordElement(124)),
-									//mrdomek: Deye doc says 1% => keep as percent integer (no scaling)
-
-							m(DeyeSunHybrid.ChannelId.GENERATOR_CHARGE_CURRENT, new UnsignedWordElement(125)),
-
-							m(DeyeSunHybrid.ChannelId.GRID_CHARGING_START_VOLTAGE, new UnsignedWordElement(126),
-									ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: 0.01 V raw -> mV integer => *10 (e.g. 4900 -> 49000 mV)
-							m(DeyeSunHybrid.ChannelId.GRID_CHARGING_START_CAPACITY, new UnsignedWordElement(127)),
-									//mrdomek: Deye doc says 1% => keep as percent integer (no scaling)
-
-							m(DeyeSunHybrid.ChannelId.GRID_CHARGE_CURRENT, new UnsignedWordElement(128)),
-							m(DeyeSunHybrid.ChannelId.GENERATOR_CHARGING_ENABLE, new UnsignedWordElement(129)),
-							m(DeyeSunHybrid.ChannelId.GRID_CHARGING_ENABLE, new UnsignedWordElement(130)),
-
-							// Power management and sell mode settings
-							m(DeyeSunHybrid.ChannelId.AC_COUPLE_FREQUENCY_LIMIT, new UnsignedWordElement(131),
-									ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: range 5000..6500 => 50.00..65.00 Hz (0.01 Hz); convert to mHz integer => *10
-							m(DeyeSunHybrid.ChannelId.FORCE_GENERATOR_AS_LOAD, new UnsignedWordElement(132)),
-							m(DeyeSunHybrid.ChannelId.GENERATOR_INPUT_AS_LOAD_ENABLE, new UnsignedWordElement(133)),
-
-							m(DeyeSunHybrid.ChannelId.SMARTLOAD_OFF_BATT_VOLTAGE, new UnsignedWordElement(134),
-									ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: 0.01 V raw -> mV integer => *10
-							m(DeyeSunHybrid.ChannelId.SMARTLOAD_OFF_BATT_CAPACITY, new UnsignedWordElement(135)),
-									//mrdomek: Deye doc says 1% => keep as percent integer (no scaling)
-
-							m(DeyeSunHybrid.ChannelId.SMARTLOAD_ON_BATT_VOLTAGE, new UnsignedWordElement(136),
-									ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: 0.01 V raw -> mV integer => *10
-							m(DeyeSunHybrid.ChannelId.SMARTLOAD_ON_BATT_CAPACITY, new UnsignedWordElement(137)),
-									//mrdomek: Deye doc says 1% => keep as percent integer (no scaling)
-
-							m(DeyeSunHybrid.ChannelId.OUTPUT_VOLTAGE_LEVEL, new UnsignedWordElement(138)),
-							m(DeyeSunHybrid.ChannelId.MIN_SOLAR_POWER_TO_START_GENERATOR, new UnsignedWordElement(139)),
-							m(DeyeSunHybrid.ChannelId.GEN_GRID_SIGNAL_ON, new UnsignedWordElement(140)),
-							m(DeyeSunHybrid.ChannelId.ENERGY_MANAGEMENT_MODEL, new UnsignedWordElement(141)),
-							m(DeyeSunHybrid.ChannelId.LIMIT_CONTROL_FUNCTION, new UnsignedWordElement(142)),
-							m(DeyeSunHybrid.ChannelId.POWER_TO_GRID_TARGET, new UnsignedWordElement(143)),
-							m(DeyeSunHybrid.ChannelId.EXTERNAL_CURRENT_SENSOR_CLAMP_PHASE, new UnsignedWordElement(144)),
-							m(DeyeSunHybrid.ChannelId.SOLAR_SELL_MODE, new UnsignedWordElement(145))),
-					// m(DeyeSunHybrid.ChannelId.TIME_OF_USE_SELLING_ENABLED, new
-					// UnsignedWordElement(146)),
-					new FC3ReadRegistersTask(146, Priority.LOW,
-							m(new BitsWordElement(146, this).bit(0, DeyeSunHybrid.ChannelId.TIME_OF_USE_SELLING_ENABLED) // Common
-																															// switch
-									.bit(1, DeyeSunHybrid.ChannelId.TIME_OF_USE_MONDAY) //
-									.bit(2, DeyeSunHybrid.ChannelId.TIME_OF_USE_TUESDAY) //
-									.bit(3, DeyeSunHybrid.ChannelId.TIME_OF_USE_WEDNESDAY) //
-									.bit(4, DeyeSunHybrid.ChannelId.TIME_OF_USE_THURSDAY) //
-									.bit(5, DeyeSunHybrid.ChannelId.TIME_OF_USE_FRIDAY) //
-									.bit(6, DeyeSunHybrid.ChannelId.TIME_OF_USE_SATURDAY) //
-									.bit(7, DeyeSunHybrid.ChannelId.TIME_OF_USE_SUNDAY) //
-							), m(DeyeSunHybrid.ChannelId.GRID_PHASE_SEQUENCE, new UnsignedWordElement(147)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_1, new UnsignedWordElement(148)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_2, new UnsignedWordElement(149)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_3, new UnsignedWordElement(150)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_4, new UnsignedWordElement(151)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_5, new UnsignedWordElement(152)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_6, new UnsignedWordElement(153)),
-
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_1_POWER, new UnsignedWordElement(154)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_2_POWER, new UnsignedWordElement(155)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_3_POWER, new UnsignedWordElement(156)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_4_POWER, new UnsignedWordElement(157)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_5_POWER, new UnsignedWordElement(158)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_6_POWER, new UnsignedWordElement(159)),
-
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_1_VOLTAGE, new UnsignedWordElement(160),
-									ElementToChannelConverter.SCALE_FACTOR_1),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_2_VOLTAGE, new UnsignedWordElement(161),
-									ElementToChannelConverter.SCALE_FACTOR_1),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_3_VOLTAGE, new UnsignedWordElement(162),
-									ElementToChannelConverter.SCALE_FACTOR_1),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_4_VOLTAGE, new UnsignedWordElement(163),
-									ElementToChannelConverter.SCALE_FACTOR_1),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_5_VOLTAGE, new UnsignedWordElement(164),
-									ElementToChannelConverter.SCALE_FACTOR_1),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_6_VOLTAGE, new UnsignedWordElement(165),
-									ElementToChannelConverter.SCALE_FACTOR_1),
-
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_1_CAPACITY, new UnsignedWordElement(166)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_2_CAPACITY, new UnsignedWordElement(167)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_3_CAPACITY, new UnsignedWordElement(168)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_4_CAPACITY, new UnsignedWordElement(169)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_5_CAPACITY, new UnsignedWordElement(170)),
-							m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_6_CAPACITY, new UnsignedWordElement(171)),
-
-							// Charge Mode points
-							m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_1, new UnsignedWordElement(172)),
-							m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_2, new UnsignedWordElement(173)),
-							m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_3, new UnsignedWordElement(174)),
-							m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_4, new UnsignedWordElement(175)),
-							m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_5, new UnsignedWordElement(176)),
-							m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_6, new UnsignedWordElement(177))
-							
 						),
-					
 
-					new FC3ReadRegistersTask(633, Priority.HIGH,
-	/*						
-							
-							m(DeyeSunHybrid.ChannelId.BATTERY_TEMPERATURE, new UnsignedWordElement(586),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_2),
-							m(DeyeSunHybrid.ChannelId.BATTERY_VOLTAGE, new UnsignedWordElement(587),
-									ElementToChannelConverter.SCALE_FACTOR_1),
-							m(SymmetricEss.ChannelId.SOC, new UnsignedWordElement(588)), new DummyRegisterElement(589),
-							m(DeyeSunHybrid.ChannelId.BATTERY_OUTPUT_POWER, new SignedWordElement(590)),
-							m(DeyeSunHybrid.ChannelId.BATTERY_OUTPUT_CURRENT, new SignedWordElement(591),
-									ElementToChannelConverter.SCALE_FACTOR_1),
-							m(DeyeSunHybrid.ChannelId.BATTERY_CORRECTED_AH, new UnsignedWordElement(592))),
+						new DummyRegisterElement(147),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_1, new UnsignedWordElement(148)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_2, new UnsignedWordElement(149)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_3, new UnsignedWordElement(150)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_4, new UnsignedWordElement(151)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_5, new UnsignedWordElement(152)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_6, new UnsignedWordElement(153)),
 
-					new FC3ReadRegistersTask(607, Priority.HIGH, // Outputs
-							/*
-							m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_ACTIVE_POWER, new SignedWordElement(607)),						
-							new DummyRegisterElement(608, 621),
-							// not totally clear. Maybe external generator is included?
-							m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_ACTIVE_POWER_L1, new SignedWordElement(622)),
-							m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_ACTIVE_POWER_L2, new SignedWordElement(623)),
-							m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_ACTIVE_POWER_L3, new SignedWordElement(624)),
-							//m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_ACTIVE_POWER, new SignedWordElement(625)),
-							new DummyRegisterElement(625,626),
-							m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_VOLTAGE_L1, new UnsignedWordElement(627),
-									ElementToChannelConverter.SCALE_FACTOR_2),
-							m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_VOLTAGE_L2, new UnsignedWordElement(628),
-									ElementToChannelConverter.SCALE_FACTOR_2),
-							m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_VOLTAGE_L3, new UnsignedWordElement(629),
-									ElementToChannelConverter.SCALE_FACTOR_2),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_1_POWER, new UnsignedWordElement(154)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_2_POWER, new UnsignedWordElement(155)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_3_POWER, new UnsignedWordElement(156)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_4_POWER, new UnsignedWordElement(157)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_5_POWER, new UnsignedWordElement(158)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_6_POWER, new UnsignedWordElement(159)),
+						new DummyRegisterElement(160, 165),
 
-							m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_CURRENT_L1, new SignedWordElement(630),
-									ElementToChannelConverter.SCALE_FACTOR_1),
-							m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_CURRENT_L2, new SignedWordElement(631),
-									ElementToChannelConverter.SCALE_FACTOR_1),
-							m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_CURRENT_L3, new SignedWordElement(632),
-									ElementToChannelConverter.SCALE_FACTOR_1),
-	*/
-							m(DeyeSunHybrid.ChannelId.POWER_L1, new SignedWordElement(633)),
-							m(DeyeSunHybrid.ChannelId.POWER_L2, new SignedWordElement(634)),
-							m(DeyeSunHybrid.ChannelId.POWER_L3, new SignedWordElement(635)),
-							// m(DeyeSunHybrid.ChannelId.ACTIVE_POWER, new SignedWordElement(636)),
-							m(SymmetricEss.ChannelId.ACTIVE_POWER, new SignedWordElement(636)), // negative values for
-																								// Charge; positive for
-																								// Discharge
-							m(DeyeSunHybrid.ChannelId.APPARENT_POWER, new SignedWordElement(637))),
-					
-					
-					new FC3ReadRegistersTask(1100, Priority.LOW,
-							m(DeyeSunHybrid.ChannelId.SET_REMOTE_MODE, new UnsignedWordElement(1100)),
-							m(DeyeSunHybrid.ChannelId.SET_REMOTE_WATCHDOG_TIME, new UnsignedWordElement(1101)),
-							new DummyRegisterElement(1102, 1103), //mrdomek: 1A/1B removed -> keep address space reserved
-							m(DeyeSunHybrid.ChannelId.SET_CONTROL_MODE, new UnsignedWordElement(1104)),
-							m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONTROL_MODE, new UnsignedWordElement(1105)),
-							m(DeyeSunHybrid.ChannelId.SET_3P_CONTROL_MODE, new UnsignedWordElement(1106)),
-							m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONSTANT_VOLTAGE, new UnsignedWordElement(1107),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
-							m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONSTANT_CURRENT, new UnsignedWordElement(1108),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
-							m(DeyeSunHybrid.ChannelId.SET_BATTERY_POWER_PERCENT, new SignedWordElement(1109),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
-							m(DeyeSunHybrid.ChannelId.SET_BATTERY_POWER_SOC, new SignedWordElement(1110),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
-							m(DeyeSunHybrid.ChannelId.SET_AC_SETPOINT_3P_PERCENT, new SignedWordElement(1111),
-									ElementToChannelConverter.SCALE_FACTOR_MINUS_1))
-					);
+						//
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_1_CAPACITY, new UnsignedWordElement(166)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_2_CAPACITY, new UnsignedWordElement(167)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_3_CAPACITY, new UnsignedWordElement(168)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_4_CAPACITY, new UnsignedWordElement(169)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_5_CAPACITY, new UnsignedWordElement(170)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_6_CAPACITY, new UnsignedWordElement(171)),
+
+						// Bit 0 -> Charge from grid enabled, Bit 1 -> Charge from generator
+						m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_1, new UnsignedWordElement(172)),
+						m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_2, new UnsignedWordElement(173)),
+						m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_3, new UnsignedWordElement(174)),
+						m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_4, new UnsignedWordElement(175)),
+						m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_5, new UnsignedWordElement(176)),
+						m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_6, new UnsignedWordElement(177))),
+
+				new FC16WriteRegistersTask(1100,
+						m(DeyeSunHybrid.ChannelId.SET_REMOTE_MODE, new UnsignedWordElement(1100)),
+						m(DeyeSunHybrid.ChannelId.SET_REMOTE_WATCHDOG_TIME, new UnsignedWordElement(1101)),
+						new DummyRegisterElement(1102, 1103), //mrdomek: 1A/1B removed -> keep address space reserved
+						m(DeyeSunHybrid.ChannelId.SET_CONTROL_MODE, new UnsignedWordElement(1104)), // set 1 for battery control (DC); set 0 for AC-control
+						m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONTROL_MODE, new UnsignedWordElement(1105)), // set 2 for percentage control; set 3 for SOC control
+						m(DeyeSunHybrid.ChannelId.SET_3P_CONTROL_MODE, new UnsignedWordElement(1106)), // set 0 for 3p control via reg. 1111
+						m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONSTANT_VOLTAGE, new UnsignedWordElement(1107),
+								ElementToChannelConverter.SCALE_FACTOR_MINUS_1), //mrdomek: TODO verify unit/scale for mV channel
+						m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONSTANT_CURRENT, new UnsignedWordElement(1108),
+								ElementToChannelConverter.SCALE_FACTOR_MINUS_1), //mrdomek: TODO verify unit/scale for mA channel
+						m(DeyeSunHybrid.ChannelId.SET_BATTERY_POWER_PERCENT, new SignedWordElement(1109),
+								ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
+						m(DeyeSunHybrid.ChannelId.SET_BATTERY_POWER_SOC, new SignedWordElement(1110),
+								ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
+						m(DeyeSunHybrid.ChannelId.SET_AC_SETPOINT_3P_PERCENT, new SignedWordElement(1111))),
+
+				// ToDo: add register for individual phase control
+				// Read registers
+
+				new FC3ReadRegistersTask(1, Priority.LOW,
+						m(SymmetricEss.ChannelId.GRID_MODE, new UnsignedWordElement(1)), new DummyRegisterElement(2),
+						m(DeyeSunHybrid.ChannelId.SERIAL_NUMBER, new StringWordElement(3, 5)),
+						new DummyRegisterElement(8, 19),
+						m(SymmetricEss.ChannelId.MAX_APPARENT_POWER,
+								new UnsignedDoublewordElement(20).wordOrder(WordOrder.LSWMSW),
+								ElementToChannelConverter.SCALE_FACTOR_MINUS_1)),
+
+				new FC3ReadRegistersTask(60, Priority.LOW,
+
+						m(DeyeSunHybrid.ChannelId.REMOTE_LOCK_STATE, new UnsignedWordElement(60)),
+
+						new DummyRegisterElement(61, 76),
+
+						m(DeyeSunHybrid.ChannelId.ACTIVE_POWER_REGULATION, new SignedWordElement(77),
+								ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
+						m(DeyeSunHybrid.ChannelId.REACTIVE_POWER_REGULATION, new SignedWordElement(78),
+								ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
+						m(DeyeSunHybrid.ChannelId.APPARENT_POWER_REGULATION, new SignedWordElement(79),
+								ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
+						m(DeyeSunHybrid.ChannelId.ENABLE_SWITCH_STATE, new UnsignedWordElement(80)),
+						m(DeyeSunHybrid.ChannelId.FACTORY_RESET_STATE, new UnsignedWordElement(81)),
+						m(DeyeSunHybrid.ChannelId.SELF_CHECKING_TIME, new SignedWordElement(82)),
+						m(DeyeSunHybrid.ChannelId.ISLAND_PROTECTION_ENABLE, new SignedWordElement(83)),
+						m(DeyeSunHybrid.ChannelId.MPPT_NUMBER, new UnsignedWordElement(84)),
+						m(DeyeSunHybrid.ChannelId.GFDI_STATE, new SignedWordElement(85)), // What is this?
+
+						new DummyRegisterElement(86),
+						m(DeyeSunHybrid.ChannelId.RISO_STATE, new UnsignedWordElement(87)), // What is this?
+						m(DeyeSunHybrid.ChannelId.GRID_STANDARD, new SignedWordElement(88)), //
+						new DummyRegisterElement(89, 120),
+
+						// Generator / grid charge settings
+						m(DeyeSunHybrid.ChannelId.GENERATOR_MAX_OPERATING_TIME, new UnsignedWordElement(121),
+								ElementToChannelConverter.SCALE_FACTOR_MINUS_1), // existing
+						//mrdomek: TODO convert 0.1h -> seconds if channel is Unit.SECONDS (needs non-decimal factor 360)
+
+						m(DeyeSunHybrid.ChannelId.GENERATOR_COOLING_TIME, new UnsignedWordElement(122),
+								ElementToChannelConverter.SCALE_FACTOR_MINUS_1), // existing
+						//mrdomek: TODO convert 0.1h -> seconds if channel is Unit.SECONDS (needs non-decimal factor 360)
+
+						m(DeyeSunHybrid.ChannelId.GENERATOR_CHARGING_START_VOLTAGE, new UnsignedWordElement(123),
+								ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: 0.01V -> mV (x10)
+
+						m(DeyeSunHybrid.ChannelId.GENERATOR_CHARGING_START_CAPACITY, new UnsignedWordElement(124)),
+						//mrdomek: 1% -> percent integer (no scaling)
+
+						m(DeyeSunHybrid.ChannelId.GENERATOR_CHARGE_CURRENT, new UnsignedWordElement(125),
+								ElementToChannelConverter.SCALE_FACTOR_3), //mrdomek: 1A -> mA (x1000)
+
+						m(DeyeSunHybrid.ChannelId.GRID_CHARGING_START_VOLTAGE, new UnsignedWordElement(126),
+								ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: 0.01V -> mV (x10)
+
+						m(DeyeSunHybrid.ChannelId.GRID_CHARGING_START_CAPACITY, new UnsignedWordElement(127)),
+						//mrdomek: 1% -> percent integer (no scaling)
+
+						m(DeyeSunHybrid.ChannelId.GRID_CHARGE_CURRENT, new UnsignedWordElement(128),
+								ElementToChannelConverter.SCALE_FACTOR_3), //mrdomek: 1A -> mA (x1000)
+						m(DeyeSunHybrid.ChannelId.GENERATOR_CHARGING_ENABLE, new UnsignedWordElement(129)),
+						m(DeyeSunHybrid.ChannelId.GRID_CHARGING_ENABLE, new UnsignedWordElement(130)),
+
+						// Power management and sell mode settings
+						m(DeyeSunHybrid.ChannelId.AC_COUPLE_FREQUENCY_LIMIT, new UnsignedWordElement(131),
+								ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: 0.01Hz -> mHz (x10)
+
+						m(DeyeSunHybrid.ChannelId.FORCE_GENERATOR_AS_LOAD, new UnsignedWordElement(132)),
+						m(DeyeSunHybrid.ChannelId.GENERATOR_INPUT_AS_LOAD_ENABLE, new UnsignedWordElement(133)),
+
+						m(DeyeSunHybrid.ChannelId.SMARTLOAD_OFF_BATT_VOLTAGE, new UnsignedWordElement(134),
+								ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: 0.01V -> mV (x10)
+						m(DeyeSunHybrid.ChannelId.SMARTLOAD_OFF_BATT_CAPACITY, new UnsignedWordElement(135)),
+						//mrdomek: 1% -> percent integer (no scaling)
+
+						m(DeyeSunHybrid.ChannelId.SMARTLOAD_ON_BATT_VOLTAGE, new UnsignedWordElement(136),
+								ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: 0.01V -> mV (x10)
+						m(DeyeSunHybrid.ChannelId.SMARTLOAD_ON_BATT_CAPACITY, new UnsignedWordElement(137)),
+						//mrdomek: 1% -> percent integer (no scaling)
+
+						m(DeyeSunHybrid.ChannelId.OUTPUT_VOLTAGE_LEVEL, new UnsignedWordElement(138)),
+						m(DeyeSunHybrid.ChannelId.MIN_SOLAR_POWER_TO_START_GENERATOR, new UnsignedWordElement(139)),
+						m(DeyeSunHybrid.ChannelId.GEN_GRID_SIGNAL_ON, new UnsignedWordElement(140)),
+						m(DeyeSunHybrid.ChannelId.ENERGY_MANAGEMENT_MODEL, new UnsignedWordElement(141)),
+						m(DeyeSunHybrid.ChannelId.LIMIT_CONTROL_FUNCTION, new UnsignedWordElement(142)),
+						m(DeyeSunHybrid.ChannelId.POWER_TO_GRID_TARGET, new UnsignedWordElement(143)),
+						m(DeyeSunHybrid.ChannelId.EXTERNAL_CURRENT_SENSOR_CLAMP_PHASE, new UnsignedWordElement(144)),
+						m(DeyeSunHybrid.ChannelId.SOLAR_SELL_MODE, new UnsignedWordElement(145))),
+				// m(DeyeSunHybrid.ChannelId.TIME_OF_USE_SELLING_ENABLED, new
+				// UnsignedWordElement(146)),
+				new FC3ReadRegistersTask(146, Priority.LOW,
+						m(new BitsWordElement(146, this).bit(0, DeyeSunHybrid.ChannelId.TIME_OF_USE_SELLING_ENABLED) // Common
+																													// switch
+								.bit(1, DeyeSunHybrid.ChannelId.TIME_OF_USE_MONDAY) //
+								.bit(2, DeyeSunHybrid.ChannelId.TIME_OF_USE_TUESDAY) //
+								.bit(3, DeyeSunHybrid.ChannelId.TIME_OF_USE_WEDNESDAY) //
+								.bit(4, DeyeSunHybrid.ChannelId.TIME_OF_USE_THURSDAY) //
+								.bit(5, DeyeSunHybrid.ChannelId.TIME_OF_USE_FRIDAY) //
+								.bit(6, DeyeSunHybrid.ChannelId.TIME_OF_USE_SATURDAY) //
+								.bit(7, DeyeSunHybrid.ChannelId.TIME_OF_USE_SUNDAY) //
+						), m(DeyeSunHybrid.ChannelId.GRID_PHASE_SEQUENCE, new UnsignedWordElement(147)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_1, new UnsignedWordElement(148)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_2, new UnsignedWordElement(149)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_3, new UnsignedWordElement(150)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_4, new UnsignedWordElement(151)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_5, new UnsignedWordElement(152)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_6, new UnsignedWordElement(153)),
+
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_1_POWER, new UnsignedWordElement(154)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_2_POWER, new UnsignedWordElement(155)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_3_POWER, new UnsignedWordElement(156)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_4_POWER, new UnsignedWordElement(157)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_5_POWER, new UnsignedWordElement(158)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_6_POWER, new UnsignedWordElement(159)),
+
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_1_VOLTAGE, new UnsignedWordElement(160),
+								ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: keep existing; verify against Deye table for this register block
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_2_VOLTAGE, new UnsignedWordElement(161),
+								ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: keep existing; verify against Deye table for this register block
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_3_VOLTAGE, new UnsignedWordElement(162),
+								ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: keep existing; verify against Deye table for this register block
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_4_VOLTAGE, new UnsignedWordElement(163),
+								ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: keep existing; verify against Deye table for this register block
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_5_VOLTAGE, new UnsignedWordElement(164),
+								ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: keep existing; verify against Deye table for this register block
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_6_VOLTAGE, new UnsignedWordElement(165),
+								ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: keep existing; verify against Deye table for this register block
+
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_1_CAPACITY, new UnsignedWordElement(166)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_2_CAPACITY, new UnsignedWordElement(167)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_3_CAPACITY, new UnsignedWordElement(168)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_4_CAPACITY, new UnsignedWordElement(169)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_5_CAPACITY, new UnsignedWordElement(170)),
+						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_6_CAPACITY, new UnsignedWordElement(171)),
+
+						// Charge Mode points
+						m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_1, new UnsignedWordElement(172)),
+						m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_2, new UnsignedWordElement(173)),
+						m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_3, new UnsignedWordElement(174)),
+						m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_4, new UnsignedWordElement(175)),
+						m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_5, new UnsignedWordElement(176)),
+						m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_6, new UnsignedWordElement(177))
+
+				),
+
+				new FC3ReadRegistersTask(633, Priority.HIGH,
+		/*						
+
+						m(DeyeSunHybrid.ChannelId.BATTERY_TEMPERATURE, new UnsignedWordElement(586),
+								ElementToChannelConverter.SCALE_FACTOR_MINUS_2),
+						m(DeyeSunHybrid.ChannelId.BATTERY_VOLTAGE, new UnsignedWordElement(587),
+								ElementToChannelConverter.SCALE_FACTOR_1),
+						m(SymmetricEss.ChannelId.SOC, new UnsignedWordElement(588)), new DummyRegisterElement(589),
+						m(DeyeSunHybrid.ChannelId.BATTERY_OUTPUT_POWER, new SignedWordElement(590)),
+						m(DeyeSunHybrid.ChannelId.BATTERY_OUTPUT_CURRENT, new SignedWordElement(591),
+								ElementToChannelConverter.SCALE_FACTOR_1),
+						m(DeyeSunHybrid.ChannelId.BATTERY_CORRECTED_AH, new UnsignedWordElement(592))),
+
+				new FC3ReadRegistersTask(607, Priority.HIGH, // Outputs
+						/*
+						m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_ACTIVE_POWER, new SignedWordElement(607)),						
+						new DummyRegisterElement(608, 621),
+						// not totally clear. Maybe external generator is included?
+						m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_ACTIVE_POWER_L1, new SignedWordElement(622)),
+						m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_ACTIVE_POWER_L2, new SignedWordElement(623)),
+						m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_ACTIVE_POWER_L3, new SignedWordElement(624)),
+						//m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_ACTIVE_POWER, new SignedWordElement(625)),
+						new DummyRegisterElement(625,626),
+						m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_VOLTAGE_L1, new UnsignedWordElement(627),
+								ElementToChannelConverter.SCALE_FACTOR_2),
+						m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_VOLTAGE_L2, new UnsignedWordElement(628),
+								ElementToChannelConverter.SCALE_FACTOR_2),
+						m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_VOLTAGE_L3, new UnsignedWordElement(629),
+								ElementToChannelConverter.SCALE_FACTOR_2),
+
+						m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_CURRENT_L1, new SignedWordElement(630),
+								ElementToChannelConverter.SCALE_FACTOR_1),
+						m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_CURRENT_L2, new SignedWordElement(631),
+								ElementToChannelConverter.SCALE_FACTOR_1),
+						m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_CURRENT_L3, new SignedWordElement(632),
+								ElementToChannelConverter.SCALE_FACTOR_1),
+		*/
+						m(DeyeSunHybrid.ChannelId.POWER_L1, new SignedWordElement(633)),
+						m(DeyeSunHybrid.ChannelId.POWER_L2, new SignedWordElement(634)),
+						m(DeyeSunHybrid.ChannelId.POWER_L3, new SignedWordElement(635)),
+						// m(DeyeSunHybrid.ChannelId.ACTIVE_POWER, new SignedWordElement(636)),
+						m(SymmetricEss.ChannelId.ACTIVE_POWER, new SignedWordElement(636)), // negative values for
+																							// Charge; positive for
+																							// Discharge
+						m(DeyeSunHybrid.ChannelId.APPARENT_POWER, new SignedWordElement(637))),
+
+				new FC3ReadRegistersTask(1100, Priority.LOW,
+						m(DeyeSunHybrid.ChannelId.SET_REMOTE_MODE, new UnsignedWordElement(1100)),
+						m(DeyeSunHybrid.ChannelId.SET_REMOTE_WATCHDOG_TIME, new UnsignedWordElement(1101)),
+						new DummyRegisterElement(1102, 1103), //mrdomek: 1A/1B removed -> keep address space reserved
+						m(DeyeSunHybrid.ChannelId.SET_CONTROL_MODE, new UnsignedWordElement(1104)),
+						m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONTROL_MODE, new UnsignedWordElement(1105)),
+						m(DeyeSunHybrid.ChannelId.SET_3P_CONTROL_MODE, new UnsignedWordElement(1106)),
+						m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONSTANT_VOLTAGE, new UnsignedWordElement(1107),
+								ElementToChannelConverter.SCALE_FACTOR_MINUS_1), //mrdomek: TODO verify unit/scale for mV channel
+						m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONSTANT_CURRENT, new UnsignedWordElement(1108),
+								ElementToChannelConverter.SCALE_FACTOR_MINUS_1), //mrdomek: TODO verify unit/scale for mA channel
+						m(DeyeSunHybrid.ChannelId.SET_BATTERY_POWER_PERCENT, new SignedWordElement(1109),
+								ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
+						m(DeyeSunHybrid.ChannelId.SET_BATTERY_POWER_SOC, new SignedWordElement(1110),
+								ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
+						m(DeyeSunHybrid.ChannelId.SET_AC_SETPOINT_3P_PERCENT, new SignedWordElement(1111),
+								ElementToChannelConverter.SCALE_FACTOR_MINUS_1))
+
+				);
 	}
+
 
 
 	@Override

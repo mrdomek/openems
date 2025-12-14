@@ -247,8 +247,7 @@ public class DeyeSunBatteryImpl extends AbstractOpenemsModbusComponent implement
 								ElementToChannelConverter.SCALE_FACTOR_1),
 						m(Battery.ChannelId.SOC, new UnsignedWordElement(588)), new DummyRegisterElement(589),
 						m(DeyeSunBattery.ChannelId.BATTERY_OUTPUT_POWER, new SignedWordElement(590)),
-						m(Battery.ChannelId.CURRENT, new SignedWordElement(591),
-								ElementToChannelConverter.SCALE_FACTOR_MINUS_2),
+						m(Battery.ChannelId.CURRENT, new SignedWordElement(591)),
 						m(DeyeSunBattery.ChannelId.BATTERY_CORRECTED_AH, new SignedWordElement(592))));
 	}
 
@@ -294,8 +293,8 @@ public class DeyeSunBatteryImpl extends AbstractOpenemsModbusComponent implement
 		return "SoC:" + this.getSoc().asString() //
 				+ "|L:" + this.getDcPower().asString() //
 				+ "|Battery Power:" + this.channel(DeyeSunBattery.ChannelId.BATTERY_OUTPUT_POWER).value().asString()
-				+ " Voltage: " + this.channel(DeyeSunBattery.ChannelId.BATTERY_VOLTAGE).value().asString()
-				+ " Current: " + this.channel(Battery.ChannelId.CURRENT).value().asString() + ";";
+				+ "|Voltage: " + this.channel(DeyeSunBattery.ChannelId.BATTERY_VOLTAGE).value().asString()
+				+ "|Current: " + this.channel(DeyeSunBattery.ChannelId.BMS_BATTERY_CURRENT).value().asString() + ";";
 	}
 
 	@Override

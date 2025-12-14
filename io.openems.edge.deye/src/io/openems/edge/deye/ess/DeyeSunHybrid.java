@@ -69,7 +69,7 @@ public interface DeyeSunHybrid
 				.persistencePriority(PersistencePriority.HIGH)), //
 
 		TARGET_CURRENT(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.AMPERE)
+				.unit(Unit.MILLIAMPERE) //mrdomek: OpenEMS best-practice: current in mA as Integer
 				.persistencePriority(PersistencePriority.HIGH)), //
 
 		// EnumReadChannels
@@ -228,7 +228,7 @@ public interface DeyeSunHybrid
 				.unit(Unit.DEGREE_CELSIUS)
 				.accessMode(AccessMode.READ_ONLY)),
 		BATTERY_VOLTAGE(Doc.of(OpenemsType.INTEGER) // register 587
-				.unit(Unit.VOLT)
+				.unit(Unit.MILLIVOLT) //mrdomek: OpenEMS best-practice: voltage in mV as Integer
 				.accessMode(AccessMode.READ_ONLY)),
 		BATTERY_SOC(Doc.of(OpenemsType.INTEGER) // register 588
 				.unit(Unit.PERCENT)
@@ -237,7 +237,7 @@ public interface DeyeSunHybrid
 				.unit(Unit.WATT)
 				.accessMode(AccessMode.READ_ONLY)),
 		BATTERY_OUTPUT_CURRENT(Doc.of(OpenemsType.INTEGER) // register 591
-				.unit(Unit.AMPERE)
+				.unit(Unit.MILLIAMPERE) //mrdomek: OpenEMS best-practice: current in mA as Integer
 				.accessMode(AccessMode.READ_ONLY)),
 		BATTERY_CORRECTED_AH(Doc.of(OpenemsType.INTEGER) // register 592
 				.unit(Unit.AMPERE_HOURS)
@@ -257,19 +257,19 @@ public interface DeyeSunHybrid
 				.unit(Unit.PERCENT)
 				.accessMode(AccessMode.READ_ONLY)), //
 		GENERATOR_CHARGE_CURRENT(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.AMPERE)
+				.unit(Unit.MILLIAMPERE) //mrdomek: OpenEMS best-practice: current in mA as Integer
 				.accessMode(AccessMode.READ_ONLY)), //
 		GRID_CHARGING_START_VOLTAGE(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.MILLIVOLT)
+				.unit(Unit.MILLIVOLT) //mrdomek: OpenEMS best-practice: voltage in mV as Integer
 				.accessMode(AccessMode.READ_ONLY)), //
 		GRID_CHARGING_START_CAPACITY(Doc.of(OpenemsType.INTEGER) //
 				.unit(Unit.PERCENT)
 				.accessMode(AccessMode.READ_ONLY)), //
 		GRID_CHARGE_CURRENT(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.AMPERE)
+				.unit(Unit.MILLIAMPERE) //mrdomek: OpenEMS best-practice: current in mA as Integer
 				.accessMode(AccessMode.READ_ONLY)), //
 		SET_GRID_CHARGE_CURRENT(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.AMPERE)
+				.unit(Unit.MILLIAMPERE) //mrdomek: OpenEMS best-practice: current in mA as Integer
 				.accessMode(AccessMode.WRITE_ONLY)), //
 		GENERATOR_CHARGING_ENABLE(Doc.of(OpenemsType.BOOLEAN) //
 				.accessMode(AccessMode.READ_ONLY)), //
@@ -282,7 +282,7 @@ public interface DeyeSunHybrid
 
 		// Power management & sell-mode settings (read-only)
 		AC_COUPLE_FREQUENCY_LIMIT(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.MILLIHERTZ)
+				.unit(Unit.MILLIHERTZ) //mrdomek: OpenEMS best-practice: frequency in mHz as Integer
 				.accessMode(AccessMode.READ_ONLY)), //
 		FORCE_GENERATOR_AS_LOAD(Doc.of(OpenemsType.INTEGER) //
 				.accessMode(AccessMode.READ_ONLY)), //
@@ -419,7 +419,7 @@ public interface DeyeSunHybrid
 		SET_ACTIVE_POWER(Doc.of(OpenemsType.INTEGER).unit(Unit.WATT).accessMode(AccessMode.WRITE_ONLY)), //
 		SET_REACTIVE_POWER(Doc.of(OpenemsType.INTEGER).unit(Unit.VOLT_AMPERE_REACTIVE).accessMode(AccessMode.WRITE_ONLY)), //
 
-		POWER_TO_GRID_TARGET(Doc.of(OpenemsType.INTEGER).unit(Unit.VOLT_AMPERE).accessMode(AccessMode.READ_WRITE)), //
+		POWER_TO_GRID_TARGET(Doc.of(OpenemsType.INTEGER).unit(Unit.WATT).accessMode(AccessMode.READ_WRITE)), //mrdomek: Deye "Max sell power" is W, not VA
 
 		SET_GEN_PEAK_SHAVING_POWER(Doc.of(OpenemsType.INTEGER).unit(Unit.WATT).accessMode(AccessMode.WRITE_ONLY)), //
 		SET_GRID_PEAK_SHAVING_POWER(Doc.of(OpenemsType.INTEGER).unit(Unit.WATT).accessMode(AccessMode.WRITE_ONLY)), //
@@ -427,8 +427,8 @@ public interface DeyeSunHybrid
 		INVERTER_RUN_STATE(Doc.of(InverterRunState.values()).accessMode(AccessMode.READ_ONLY)), //
 
 		// LongReadChannel
-		ORIGINAL_ACTIVE_CHARGE_ENERGY(Doc.of(OpenemsType.LONG)), //
-		ORIGINAL_ACTIVE_DISCHARGE_ENERGY(Doc.of(OpenemsType.LONG)), //
+		ORIGINAL_ACTIVE_CHARGE_ENERGY(Doc.of(OpenemsType.LONG).unit(Unit.WATT_HOURS)), //mrdomek: OpenEMS best-practice: energy in Wh as Long
+		ORIGINAL_ACTIVE_DISCHARGE_ENERGY(Doc.of(OpenemsType.LONG).unit(Unit.WATT_HOURS)), //mrdomek: OpenEMS best-practice: energy in Wh as Long
 
 		// Inverter Output includes external generator?
 		GRID_OUTPUT_ACTIVE_POWER_L1(Doc.of(OpenemsType.INTEGER).unit(Unit.WATT).accessMode(AccessMode.READ_ONLY)), //
@@ -459,8 +459,8 @@ public interface DeyeSunHybrid
 		SET_REMOTE_WATCHDOG_TIME(Doc.of(OpenemsType.INTEGER).accessMode(AccessMode.READ_WRITE)), //
 
 		// ToDo: Set right units and scaling
-		SET_BATTERY_CONSTANT_VOLTAGE(Doc.of(OpenemsType.INTEGER).accessMode(AccessMode.READ_WRITE)), //
-		SET_BATTERY_CONSTANT_CURRENT(Doc.of(OpenemsType.INTEGER).accessMode(AccessMode.READ_WRITE)), //
+		SET_BATTERY_CONSTANT_VOLTAGE(Doc.of(OpenemsType.INTEGER).unit(Unit.MILLIVOLT).accessMode(AccessMode.READ_WRITE)), //mrdomek: voltage in mV as Integer
+		SET_BATTERY_CONSTANT_CURRENT(Doc.of(OpenemsType.INTEGER).unit(Unit.MILLIAMPERE).accessMode(AccessMode.READ_WRITE)), //mrdomek: current in mA as Integer
 		//mrdomek Removed 1A/1B placeholders (previously called FUCKOFF_1/2).
 
 		APPARENT_POWER(Doc.of(OpenemsType.INTEGER).unit(Unit.VOLT_AMPERE)), //
