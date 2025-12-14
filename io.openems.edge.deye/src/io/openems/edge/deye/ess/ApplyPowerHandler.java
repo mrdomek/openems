@@ -22,25 +22,29 @@ public class ApplyPowerHandler {
 	private final DeyeDcCharger dcCharger;
 	private final Logger log;
 
-	// === Smoothing & state ===
-	private final AverageCalculator targetPowerAvg = new AverageCalculator(5);
+	// === Limits ===
+	// mrdomek: 100A Limit (Hartes Limit für Hardware-Schutz)
+	private static final int MAX_A = 100;
 
-	// === Last written values ===
-	private int iSetLast = 0;
+	// === Initialization ===
+	private boolean initialized = false;
 
-	// Pv correction
-	private int lastUsedPvAc = 0;
+	// === TIMERS ===
+	// Timer 1: Watchdog (sehr langsam, alle 30s)
+	private static final long WATCHDOG_INTERVAL_MS = 30_000L;
+	private long lastWatchdogMs = 0L;
+
+	// Timer 2: Power Setpoint (alle 3s)
+	private static final long POWER_INTERVAL_MS = 3_000L;
+	private long lastPowerWriteMs = 0L;
+
+	// === State ===
+	// mrdomek: Letzten geschriebenen Wert merken, um unnötige Duplikate zu vermeiden
+	private Integer lastSetpoint1111 = null;
 	
-	private int cycleCounter = 0;
-
-	private static final int MAX_A = 20;
-
-	// === Mode ===
-	private enum FlowMode {
-		CHARGE, DISCHARGE
-	}
-
-	private FlowMode lastMode = null;
+	// mrdomek: Minimale Änderung 0.5% (5 Einheiten), damit der Bus nicht bei Rauschen zugemüllt wird.
+	// Wenn du es GANZ stumpf willst (auch 0.1% Rauschen schreiben), setze das auf 0.
+	private static final int MIN_STEP_1111 = 5; 
 
 	public ApplyPowerHandler(DeyeSunHybridImpl ess, DeyeSunBattery battery, DeyeDcCharger dcCharger) {
 		this.ess = ess;
@@ -53,153 +57,130 @@ public class ApplyPowerHandler {
 			throws OpenemsNamedException {
 
 		// --- Guards ---
-		if (!ess.isManaged()) {
-			log.debug("[ApplyPower] ESS not managed – skipping.");
-			return;
-		}
+		if (!ess.isManaged()) return;
 		if (ess.getWorkState() != WorkState.NORMAL) {
-			log.error("ESS not in normal state. Skipping ApplyPower");
+			log.debug("ESS not in normal state. Skipping ApplyPower");
 			return;
 		}
 
 		// --- Read inputs ---
 		Integer maxApparentPower = ess.getMaxApparentPower().get();
+		// Inputs lesen für Null-Checks
 		Integer batteryPower = battery.getDcPower().get();
-		//Integer powerAcGrid = ess.getGridOutPower().get();
 		Integer activePower = ess.getActivePower().orElse(0);
-		Integer dcDischargePower = ess.getDcDischargePower().orElse(0);
-		int pvPower = (dcCharger != null) ? dcCharger.getActualPower().orElse(0) : 0;
-		Integer batteryVoltageRaw = battery.getBatteryVoltage().get();
-		Integer maxAllowedChargePower = ess.getAllowedChargePower().get();
-		Integer maxAllowedDischargePower = ess.getAllowedDischargePower().get();
 		
-		this.targetPowerAvg.addValue(activePowerTarget);
+		if (maxApparentPower == null || maxApparentPower <= 0) return;
+		if (battery.getBatteryVoltage().get() == null) return;
 
-		if (Stream.of(batteryVoltageRaw, batteryPower, maxAllowedChargePower, maxAllowedDischargePower)
-				.anyMatch(Objects::isNull)) {
-			return;
+		long now = System.currentTimeMillis();
+
+		// ========================================================================
+		// 1. INITIALISIERUNG (Einmalig beim Start)
+		// ========================================================================
+		if (!this.initialized) {
+			this.writeFlags(); 
+
+			this.ess.setSetRemoteMode(1); 
+			this.ess.setSetRemoteWatchdogTime(600); 
+
+			// Einmaliges Setzen der Modi (Registers 1102-1110)
+			this.ess.setFuckOff1(0); 
+			this.ess.setFuckOff2(0); 
+			this.ess.setSetControlMode(0); 
+			this.ess.setSetBatteryControlMode(2); 
+			this.ess.setSet3PControlMode(0); 
+			this.ess.setBatteryConstantVoltage(0); 
+			this.ess.setBatteryConstantCurrent(0); 
+			this.ess.setSetBatteryPowerPercent(0); 
+			this.ess.setSetBatteryPowerSoc(0); 
+
+			this.initialized = true;
+			this.lastWatchdogMs = now;
+			this.lastPowerWriteMs = now;
 		}
-		if (maxApparentPower == null) {
-			ess.logDebug(log, "Max Apparent power not available. Skipping ApplyPower");
-			return;
+
+		// ========================================================================
+		// 2. WATCHDOG TIMER (Alle 30 Sekunden)
+		// ========================================================================
+		if ((now - this.lastWatchdogMs) >= WATCHDOG_INTERVAL_MS) {
+			this.lastWatchdogMs = now;
+			// Watchdog auf 10 Minuten setzen (Countdown), wir erneuern ihn aber alle 30s
+			this.ess.setSetRemoteWatchdogTime(600); 
+			// log.info("Watchdog refreshed (30s)");
+		}
+
+		// ========================================================================
+		// 3. POWER WRITE TIMER (Alle 3 Sekunden)
+		// ========================================================================
+		if ((now - this.lastPowerWriteMs) >= POWER_INTERVAL_MS) {
+			this.lastPowerWriteMs = now;
+
+			// --- RAW LOGIC: Keine Mittelwerte, keine Dämpfung ---
+			// Wir nehmen den Target direkt vom Controller
+			int targetW = activePowerTarget;
+
+			// Einzige Modifikation: Umrechnung in % für Deye
+			int powerDeciPercentToWrite = calculateDeciPercentFromPower(maxApparentPower, targetW);
+
+			// --- Schreib-Entscheidung ---
+			boolean writeRequired = false;
+
+			if (this.lastSetpoint1111 == null) {
+				writeRequired = true;
+			} else {
+				// Prüfe auf Änderung (Hysterese gegen Bus-Überlastung bei minimalem Rauschen)
+				if (Math.abs(powerDeciPercentToWrite - this.lastSetpoint1111) >= MIN_STEP_1111) {
+					writeRequired = true;
+				}
+				// WICHTIG: Richtungswechsel (Laden <-> Entladen) IMMER schreiben
+				if (Integer.signum(powerDeciPercentToWrite) != Integer.signum(this.lastSetpoint1111)) {
+					writeRequired = true;
+				}
+			}
+
+			if (writeRequired) {
+				this.ess.setSetAcSetpoint3pPercent(powerDeciPercentToWrite); // Register 1111
+				this.lastSetpoint1111 = powerDeciPercentToWrite;
+				
+				log.info("ApplyPower (3s): TargetRaw=" + targetW + "W -> Setpoint=" + powerDeciPercentToWrite);
+			}
 		}
 		
-		this.writeFlags();
-		this.cycleCounter ++;
-		
-		int powerDeciPercent = calculateDeciPercentFromPower(maxApparentPower, activePowerTarget);
-		
-		if (( Math.abs( this.targetPowerAvg.getAverage() - activePowerTarget) > 100) || this.cycleCounter > 3) {
-
-			this.cycleCounter = 0;
-			
-		this.ess.setSetRemoteMode(1); // reg 1100 0->disable, 1->enable
-		this.ess.setSetRemoteWatchdogTime(600); // reg 1101 Watchdog
-		
-		this.ess.setFuckOff1(0); // 1102
-		this.ess.setFuckOff2(0); // 1103
-		
-		this.ess.setSetControlMode(1); // reg 1104 // set 1 for battery control (DC); set 0 for AC-control
-		this.ess.setSetBatteryControlMode(2); // reg 1105 // set 2 for for percentage control (reg 1109); set 3 for SOC control (reg 1110)
-		this.ess.setSet3PControlMode(0);  // reg 1106 set 0 for 3p control via reg. 1111; set 1 for control each phase individually
-		
-		this.ess.setBatteryConstantVoltage(0); // 1107
-		this.ess.setBatteryConstantCurrent(0); // 1108
-		
-		this.ess.setSetBatteryPowerPercent(powerDeciPercent); // 1109 
-		this.ess.setSetBatteryPowerSoc(0); // 1110
-		
-		
-		this.ess.setSetAcSetpoint3pPercent(0); // reg 1111. Negative values -> Charge
-		
-
-
-		} 		
-		// convert for debugging
-		int powerPercent = (int) Math.round((double)powerDeciPercent / 10.0);
-		
- 		ess.logDebug(log, "\n-> AC target: " + activePowerTarget
- 				+ "(" + powerPercent +" /10%) " 
-				+ "\n   PV: " + pvPower 
-				+ "\n   ActivePower: " + activePower + " | Grid (Deye AC In): ToDo" 
-				+ "\n   Mode: " + lastMode
-				+ "\n | EnergyManagementModel: " + this.ess.getEnergyManagementModel()
-				+ "\n | LimitControlFunction: " + this.ess.getLimitControlFunction()
-				+ "\n | SolarSellMode: " + this.ess.getSolarSellMode()
-				+ "\n | GridChargeEnabled: " + this.ess.getGridCharingEnabled());		
+		// Optional: Debug pro Zyklus (Achtung: Log-Flut bei 1s Zyklen)
+		// ess.logDebug(log, "Cycle: Target=" + activePowerTarget + " Grid=" + activePower);
 	}
 
 	// ========================= Helper =========================
 
 	private int calculateDeciPercentFromPower(int maxApparentPower, int targetPower) {
-	    if (maxApparentPower <= 0) {
-	        throw new IllegalArgumentException("maxApparentPower must be > 0");
-	    }
-
-	    double percent = (double) targetPower * 100.0 / (double) maxApparentPower;
-
-	    // clamp to [-100, +100]
-	    percent = Math.max(-100.0, Math.min(100.0, percent));
-
-	    // 0.1% steps => [-1000..1000]
-	    return (int) Math.round(percent * 10.0);
+		if (maxApparentPower <= 0) return 0;
+		// Einfache Prozentrechnung ohne Glättung
+		double percent = (double) targetPower * 100.0 / (double) maxApparentPower;
+		// Hard Limits [-100% ... +100%]
+		percent = Math.max(-100.0, Math.min(100.0, percent));
+		// Skalierung auf 0.1% Schritte (Deye Format)
+		return (int) Math.round(percent * 10.0);
 	}
-	
-	/**
-	 * Flags: "erstmal lassen", aber ohne Unterscheidung nach Charge/Discharge.
-	 * Einheitliche Konfiguration.
-	 */
+
 	private void writeFlags() throws OpenemsNamedException {
-		// 129: Generator Charging aus
-		if (this.ess.getGeneratorCharingEnabled() != false) {
-			this.ess.setGeneratorCharingEnabled(false);
-		}
-
-		// 130: Grid Charging an
-		if (this.ess.getGridCharingEnabled() != true) {
-			this.ess.setGridCharingEnabled(true);
-		}
-
-		// 141: Load first
-		if (this.ess.getEnergyManagementModel() != EnergyManagementModel.LOAD_FIRST) {
+		// Statische Konfiguration beim Start
+		if (!this.ess.getGeneratorCharingEnabled()) this.ess.setGeneratorCharingEnabled(false);
+		if (!this.ess.getGridCharingEnabled()) this.ess.setGridCharingEnabled(true);
+		
+		if (this.ess.getEnergyManagementModel() != EnergyManagementModel.LOAD_FIRST) 
 			this.ess.setEnergyManagementModel(EnergyManagementModel.LOAD_FIRST);
-		}
 
-		// 142: Selling Active
-		if (this.ess.getLimitControlFunction() != LimitControlFunction.SELLING_ACTIVE) {
+		if (this.ess.getLimitControlFunction() != LimitControlFunction.SELLING_ACTIVE) 
 			this.ess.setLimitControlFunction(LimitControlFunction.SELLING_ACTIVE);
-		}
 
-		// 145: PV-Selling aktiv
-		if (this.ess.getSolarSellMode() != EnableDisable.ENABLED) {
+		if (this.ess.getSolarSellMode() != EnableDisable.ENABLED) 
 			this.ess.setSolarSellMode(EnableDisable.ENABLED);
-		}
 
-		// 166: 100 % SOC
-		if (this.ess.getSellModeTimePoint1Capacity().get() != 100) {
-			this.ess.setSellModeTimePoint1Capacity(100);
-		}
+		if (this.ess.getSellModeTimePoint1Capacity().get() != 100) this.ess.setSellModeTimePoint1Capacity(100);
+		if (this.ess.getChargeModeTimePoint1().get() != 1) this.ess.setChargeModeTimePoint1(1);
 
-		// 172: Charge Mode Zeitpunkt 1 = 1
-		if (this.ess.getChargeModeTimePoint1().get() != 1) {
-			this.ess.setChargeModeTimePoint1(1);
-		}
-		
-		if (battery.getBmsChargeCurrentLimit().get() != MAX_A ) {
-			battery.setBmsMaxChargeCurrent(MAX_A);  // 108	
-		}
-		
-		if (battery.getBmsDischargeCurrentLimit().get() != MAX_A ) {
-			battery.setBmsMaxDischargeCurrent(MAX_A); // 109
-		}		
-		
-		if (this.ess.getGridChargeCurrent().get() != MAX_A) {
-			this.ess.setGridChargeCurrent(MAX_A);   // 128	
-		}
-		
-
+		if (battery.getBmsChargeCurrentLimit().get() != MAX_A) battery.setBmsMaxChargeCurrent(MAX_A); 
+		if (battery.getBmsDischargeCurrentLimit().get() != MAX_A) battery.setBmsMaxDischargeCurrent(MAX_A); 
+		if (this.ess.getGridChargeCurrent().get() != MAX_A) this.ess.setGridChargeCurrent(MAX_A); 
 	}
-
-
-
 }
