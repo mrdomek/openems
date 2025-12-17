@@ -178,6 +178,12 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 		if (this.config.readOnlyMode()) {
 			return;
 		}
+
+		if (this.getWorkState() != WorkState.NORMAL) {
+			//mrdomek Ignore controller setpoints until inverter is fully ready (WorkState.NORMAL).
+			return;
+		}
+
 		log.debug("\n\n applyPower called by {} with {} W", Thread.currentThread().getStackTrace()[2].getClassName(),
 				activePower);
 		// AC 1/28/2024
@@ -598,14 +604,22 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 		case EdgeEventConstants.TOPIC_CYCLE_BEFORE_CONTROLLERS:
 			// this.calculateAllowedChargeDischargePower();
 			this.getAndSetChannels();
+			this.updateGridModeFromRelayStatus();
+			this.defineWorkState();
+
+			if (this.getWorkState() != WorkState.NORMAL || this.allowedChargeDischargeHandler == null) {
+				//mrdomek Controller handshake: publish zero allowed power until inverter is fully ready.
+				this.channel(ManagedSymmetricEss.ChannelId.ALLOWED_CHARGE_POWER).setNextValue(0);
+				this.channel(ManagedSymmetricEss.ChannelId.ALLOWED_DISCHARGE_POWER).setNextValue(0);
+				break;
+			}
+
 			this.allowedChargeDischargeHandler.accept(this.componentManager);
 			/*
 			 * if (this.applyPowerHandler != null) {
 			 * this.applyPowerHandler.calculateMaxAcPower(this.getMaxApparentPower().orElse(
 			 * 0)); }
 			 */
-			this.updateGridModeFromRelayStatus();
-			this.defineWorkState();
 			break;
 		}
 	}
@@ -756,9 +770,12 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 			return;
 		}
 
+		//mrdomek: SoC is sourced from battery component; must be updated even when applyPower() is gated by WorkState.
+		final Integer soc = this.battery.getSoc().get();
+		this._setSoc(soc);
+
 		Integer dcPower = this.battery.getDcPower().get();
 		this._setDcDischargePower(dcPower); // channel of HybridEss
-
 	}
 
 	private void calculateEnergy() {
