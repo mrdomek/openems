@@ -4,7 +4,6 @@ import static io.openems.edge.common.cycle.Cycle.DEFAULT_CYCLE_TIME;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
-
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -42,7 +41,6 @@ import io.openems.edge.bridge.modbus.api.element.UnsignedWordElement;
 import io.openems.edge.bridge.modbus.api.element.WordOrder;
 import io.openems.edge.bridge.modbus.api.task.FC16WriteRegistersTask;
 import io.openems.edge.bridge.modbus.api.task.FC3ReadRegistersTask;
-
 import io.openems.edge.common.component.ComponentManager;
 import io.openems.edge.common.component.OpenemsComponent;
 import io.openems.edge.common.cycle.Cycle;
@@ -50,19 +48,18 @@ import io.openems.edge.common.event.EdgeEventConstants;
 import io.openems.edge.common.modbusslave.ModbusSlave;
 import io.openems.edge.common.modbusslave.ModbusSlaveTable;
 import io.openems.edge.common.startstop.StartStop;
+import io.openems.edge.common.sum.GridMode;
 import io.openems.edge.common.taskmanager.Priority;
 import io.openems.edge.deye.battery.DeyeSunBattery;
 import io.openems.edge.deye.dccharger.DeyeDcCharger;
 import io.openems.edge.deye.enums.BatteryRunState;
 import io.openems.edge.deye.enums.EmsPowerMode;
 import io.openems.edge.deye.enums.WorkState;
-
 import io.openems.edge.ess.api.HybridEss;
 import io.openems.edge.ess.api.ManagedSymmetricEss;
 import io.openems.edge.ess.api.SymmetricEss;
 import io.openems.edge.ess.generic.common.CycleProvider;
 import io.openems.edge.ess.power.api.Power;
-
 import io.openems.edge.timedata.api.Timedata;
 import io.openems.edge.timedata.api.TimedataProvider;
 import io.openems.edge.timedata.api.utils.CalculateEnergyFromPower;
@@ -303,8 +300,7 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 				// ToDo: add register for individual phase control
 				// Read registers
 
-				new FC3ReadRegistersTask(1, Priority.LOW,
-						m(SymmetricEss.ChannelId.GRID_MODE, new UnsignedWordElement(1)), new DummyRegisterElement(2),
+				new FC3ReadRegistersTask(3, Priority.LOW,
 						m(DeyeSunHybrid.ChannelId.SERIAL_NUMBER, new StringWordElement(3, 5)),
 						new DummyRegisterElement(8, 19),
 						m(SymmetricEss.ChannelId.MAX_APPARENT_POWER,
@@ -445,6 +441,11 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 						m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_6, new UnsignedWordElement(177))
 
 				),
+				
+				//mrdomek Read Deye relay bitfield (reg 552) as raw value; GridMode is derived from one specific bit.
+				new FC3ReadRegistersTask(552, Priority.HIGH,
+				        m(DeyeSunHybrid.ChannelId.AC_RELAY_STATUS, new UnsignedWordElement(552))),
+
 
 				new FC3ReadRegistersTask(633, Priority.HIGH,
 		/*						
@@ -575,7 +576,12 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 																														// Discharge
 				+ ";" + "|Allowed:"
 				+ this.channel(ManagedSymmetricEss.ChannelId.ALLOWED_CHARGE_POWER).value().asStringWithoutUnit() + ";"
-				+ this.channel(ManagedSymmetricEss.ChannelId.ALLOWED_DISCHARGE_POWER).value().asString();
+				+ this.channel(ManagedSymmetricEss.ChannelId.ALLOWED_DISCHARGE_POWER).value().asString()
+				+ ";|AcRelayStatus="
+				+ this.channel(DeyeSunHybrid.ChannelId.AC_RELAY_STATUS).value().asStringWithoutUnit() //mrdomek Raw reg 552 for troubleshooting bit logic.
+				+ ";|GridMode="
+				+ this.channel(SymmetricEss.ChannelId.GRID_MODE).value().asString(); //mrdomek Derived from AC_RELAY_STATUS bit2.
+
 	}
 
 	@Override
@@ -598,12 +604,31 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 			 * this.applyPowerHandler.calculateMaxAcPower(this.getMaxApparentPower().orElse(
 			 * 0)); }
 			 */
+			this.updateGridModeFromRelayStatus();
 			this.defineWorkState();
 			break;
 		}
 	}
 
-	
+	private void updateGridModeFromRelayStatus() {
+	    //mrdomek GridMode must be derived from one bit of the relay bitfield, not from the full register value.
+	    final Integer relayStatus = this.channel(DeyeSunHybrid.ChannelId.AC_RELAY_STATUS)
+	            .value().asOptional()
+	            .map(v -> ((Number) v).intValue())
+	            .orElse(null);
+
+	    if (relayStatus == null) {
+	        this.channel(SymmetricEss.ChannelId.GRID_MODE).setNextValue(GridMode.UNDEFINED);
+	        return;
+	    }
+
+	    //mrdomek Using bit2 as "grid" indicator; other bits represent other relays and must not affect GridMode.
+	    final boolean onGrid = (relayStatus & 0x0004) != 0; // bit2
+
+	    this.channel(SymmetricEss.ChannelId.GRID_MODE)
+	            .setNextValue(onGrid ? GridMode.ON_GRID : GridMode.OFF_GRID);
+	}
+
 	
 	private void defineWorkState() {
 		/*

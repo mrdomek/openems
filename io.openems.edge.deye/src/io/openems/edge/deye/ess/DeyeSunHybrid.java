@@ -464,6 +464,10 @@ public interface DeyeSunHybrid
 		//mrdomek Removed 1A/1B placeholders (previously called FUCKOFF_1/2).
 
 		APPARENT_POWER(Doc.of(OpenemsType.INTEGER).unit(Unit.VOLT_AMPERE)), //
+		AC_RELAY_STATUS(Doc.of(OpenemsType.INTEGER) //
+		        .accessMode(AccessMode.READ_ONLY) //
+		        .unit(Unit.NONE)), //mrdomek Raw reg 552 bitfield; GridMode is derived from one specific bit.
+
 		;
 
 		private final Doc doc;
