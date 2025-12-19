@@ -101,6 +101,12 @@ public @interface Config {
                     + "If disabled, it is only informational.")
     boolean useAsProductionMeter() default true;
 
+	@AttributeDefinition(name = "Debug mode", description = "Enables Debug mode")
+	boolean debugMode() default false;	
+	
+	@AttributeDefinition(name = "Extended Debug mode", description = "Enables extended Debug mode")
+	boolean extendedDebugMode() default false;		
+   
     @AttributeDefinition(
             name = "Modbus target filter",
             description = "OSGi target filter for the Modbus bridge service.")

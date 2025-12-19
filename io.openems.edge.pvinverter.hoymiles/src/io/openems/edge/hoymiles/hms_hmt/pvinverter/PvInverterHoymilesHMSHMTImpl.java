@@ -6,7 +6,10 @@ import static org.osgi.service.component.annotations.ReferenceCardinality.MANDAT
 import static org.osgi.service.component.annotations.ReferencePolicy.STATIC;
 import static org.osgi.service.component.annotations.ReferencePolicyOption.GREEDY;
 
+import java.util.Arrays;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.osgi.service.cm.ConfigurationAdmin;
 import org.osgi.service.component.ComponentContext;
@@ -32,6 +35,7 @@ import io.openems.edge.bridge.modbus.api.ModbusComponent;
 import io.openems.edge.bridge.modbus.api.ModbusProtocol;
 import io.openems.edge.bridge.modbus.api.element.SignedWordElement;
 import io.openems.edge.bridge.modbus.api.element.StringWordElement;
+import io.openems.edge.bridge.modbus.api.element.UnsignedDoublewordElement;
 import io.openems.edge.bridge.modbus.api.task.FC16WriteRegistersTask;
 import io.openems.edge.bridge.modbus.api.task.FC4ReadInputRegistersTask;
 import io.openems.edge.common.component.OpenemsComponent;
@@ -304,7 +308,10 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         // Aktive Leistungsbegrenzung anwenden, falls nicht im Read-Only-Modus
         if (!this.config.readOnly()) {
             this.applyActivePowerLimitFromChannel();
+            
         }
+        // Trigger für die erweiterte Debug-Ausgabe
+        this.logDebug(this.log, "Next Cycle");
     }
 
     @Override
@@ -827,34 +834,24 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
          * MI1 base address: 0x38E0
          * MI2 base address: 0x3940
          * -> Block size per MI: 0x60 (96 words)
-         *
-         * Wir wählen über microinverterNumber (1..99) den Block und lesen:
-         * - Seriennummer (3 Words) separat
-         * - Realtime-Daten 0x38E7..0x390D in einem Block
          */
-
         final int base = 0x38E0 + (this.microinverterNumber - 1) * MI_REGISTER_BLOCK_SIZE;
 
         /*
          * Per-Port Status-/Limit-Register:
-         *
-         * Port 1:
-         *   0xD006 Turn ON/OFF
-         *   0xD007 Temporary Limit Active Power (Port 1)
-         *   0xD008 Permanent Limit Active Power (Port 1)
-         *   ...
-         * Jeder weitere Port liegt +0x0006 weiter.
-         *
-         * Wir adressieren den Port mit der gleichen Nummer wie microinverterNumber.
+         * 0xD006 ff.
          */
         final int portBase = 0xD006 + (this.microinverterNumber - 1) * 0x0006;
 
         /*
          * Modbus elements
          */
-
         // Serial number: 3 words at base (0x38E0..0x38E2)
         final StringWordElement serial = new StringWordElement(base, 3);
+
+        // Production counters
+        final UnsignedDoublewordElement totalProductionWh = new UnsignedDoublewordElement(base + 0x03); // 0x38E3..0x38E4
+        final UnsignedDoublewordElement todayProductionWh = new UnsignedDoublewordElement(base + 0x05); // 0x38E5..0x38E6
 
         // Realtime block starting at 0x38E7 (Active power)
         final SignedWordElement activePower = new SignedWordElement(base + 0x07);   // 0x38E7
@@ -876,25 +873,29 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         final SignedWordElement frequency = new SignedWordElement(base + 0x13);     // 0x38F3
         final SignedWordElement temperature = new SignedWordElement(base + 0x14);   // 0x38F4
 
+        // PV registers
         final SignedWordElement pv1Voltage = new SignedWordElement(base + 0x15);    // 0x38F5
-        final SignedWordElement pv2Voltage = new SignedWordElement(base + 0x16);    // 0x38F6
-        final SignedWordElement pv3Voltage = new SignedWordElement(base + 0x17);    // 0x38F7
-        final SignedWordElement pv4Voltage = new SignedWordElement(base + 0x18);    // 0x38F8
-        final SignedWordElement pv5Voltage = new SignedWordElement(base + 0x19);    // 0x38F9
-        final SignedWordElement pv6Voltage = new SignedWordElement(base + 0x1A);    // 0x38FA
+        final SignedWordElement pv1Current = new SignedWordElement(base + 0x16);    // 0x38F6
+        final SignedWordElement pv1Power = new SignedWordElement(base + 0x17);      // 0x38F7
 
-        final SignedWordElement pv1Current = new SignedWordElement(base + 0x1B);    // 0x38FB
-        final SignedWordElement pv2Current = new SignedWordElement(base + 0x1C);    // 0x38FC
-        final SignedWordElement pv3Current = new SignedWordElement(base + 0x1D);    // 0x38FD
-        final SignedWordElement pv4Current = new SignedWordElement(base + 0x1E);    // 0x38FE
-        final SignedWordElement pv5Current = new SignedWordElement(base + 0x1F);    // 0x38FF
-        final SignedWordElement pv6Current = new SignedWordElement(base + 0x20);    // 0x3900
+        final SignedWordElement pv2Voltage = new SignedWordElement(base + 0x18);    // 0x38F8
+        final SignedWordElement pv2Current = new SignedWordElement(base + 0x19);    // 0x38F9
+        final SignedWordElement pv2Power = new SignedWordElement(base + 0x1A);      // 0x38FA
 
-        final SignedWordElement pv1Power = new SignedWordElement(base + 0x21);      // 0x3901
-        final SignedWordElement pv2Power = new SignedWordElement(base + 0x22);      // 0x3902
-        final SignedWordElement pv3Power = new SignedWordElement(base + 0x23);      // 0x3903
-        final SignedWordElement pv4Power = new SignedWordElement(base + 0x24);      // 0x3904
-        final SignedWordElement pv5Power = new SignedWordElement(base + 0x25);      // 0x3905
+        final SignedWordElement pv3Voltage = new SignedWordElement(base + 0x1B);    // 0x38FB
+        final SignedWordElement pv3Current = new SignedWordElement(base + 0x1C);    // 0x38FC
+        final SignedWordElement pv3Power = new SignedWordElement(base + 0x1D);      // 0x38FD
+
+        final SignedWordElement pv4Voltage = new SignedWordElement(base + 0x1E);    // 0x38FE
+        final SignedWordElement pv4Current = new SignedWordElement(base + 0x1F);    // 0x38FF
+        final SignedWordElement pv4Power = new SignedWordElement(base + 0x20);      // 0x3900
+
+        final SignedWordElement pv5Voltage = new SignedWordElement(base + 0x21);    // 0x3901
+        final SignedWordElement pv5Current = new SignedWordElement(base + 0x22);    // 0x3902
+        final SignedWordElement pv5Power = new SignedWordElement(base + 0x23);      // 0x3903
+
+        final SignedWordElement pv6Voltage = new SignedWordElement(base + 0x24);    // 0x3904
+        final SignedWordElement pv6Current = new SignedWordElement(base + 0x25);    // 0x3905
         final SignedWordElement pv6Power = new SignedWordElement(base + 0x26);      // 0x3906
 
         final SignedWordElement status = new SignedWordElement(base + 0x27);        // 0x3907
@@ -914,10 +915,12 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
          * Channel mapping
          */
 
-        // Serial
+        // Serial + Production
         this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_SERIAL, serial);
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_TOTAL_PRODUCTION_WH, totalProductionWh);
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_TODAY_PRODUCTION_WH, todayProductionWh);
 
-        // Active power: 0.1 W/bit -> W
+        // Active power: 0.1 W/bit -> W (loses precision 0.1W -> 0W, standard OpenEMS int)
         this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_ACTIVE_POWER_W, activePower,
                 ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
 
@@ -925,70 +928,70 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_REACTIVE_POWER_VAR, reactivePower,
                 ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
 
-        // Power factor: 0.01/bit
+        // Power factor: 0.001/bit -> Double
         this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_POWER_FACTOR, powerFactor,
-                ElementToChannelConverter.SCALE_FACTOR_MINUS_2);
+                ElementToChannelConverter.SCALE_FACTOR_MINUS_3);
 
-        // Voltages 0.1 V/bit
-        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_VOLTAGE_L1_V, vphA,
-                ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
-        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_VOLTAGE_L2_V, vphB,
-                ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
-        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_VOLTAGE_L3_V, vphC,
-                ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
+        // Grid Voltages: 0.1 V/bit -> Millivolt (x100)
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_VOLTAGE_L1_mV, vphA,
+                ElementToChannelConverter.SCALE_FACTOR_2);
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_VOLTAGE_L2_mV, vphB,
+                ElementToChannelConverter.SCALE_FACTOR_2);
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_VOLTAGE_L3_mV, vphC,
+                ElementToChannelConverter.SCALE_FACTOR_2);
 
-        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_VOLTAGE_L1_L2_V, uab,
-                ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
-        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_VOLTAGE_L2_L3_V, ubc,
-                ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
-        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_VOLTAGE_L3_L1_V, uca,
-                ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_VOLTAGE_L1_L2_mV, uab,
+                ElementToChannelConverter.SCALE_FACTOR_2);
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_VOLTAGE_L2_L3_mV, ubc,
+                ElementToChannelConverter.SCALE_FACTOR_2);
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_VOLTAGE_L3_L1_mV, uca,
+                ElementToChannelConverter.SCALE_FACTOR_2);
 
-        // Currents 0.01 A/bit
-        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_CURRENT_L1_A, iphA,
-                ElementToChannelConverter.SCALE_FACTOR_MINUS_2);
-        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_CURRENT_L2_A, iphB,
-                ElementToChannelConverter.SCALE_FACTOR_MINUS_2);
-        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_CURRENT_L3_A, iphC,
-                ElementToChannelConverter.SCALE_FACTOR_MINUS_2);
+        // Grid Currents: 0.01 A/bit -> Milliampere (x10)
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_CURRENT_L1_mA, iphA,
+                ElementToChannelConverter.SCALE_FACTOR_1);
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_CURRENT_L2_mA, iphB,
+                ElementToChannelConverter.SCALE_FACTOR_1);
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_CURRENT_L3_mA, iphC,
+                ElementToChannelConverter.SCALE_FACTOR_1);
 
-        // Frequency 0.01 Hz/bit
-        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_GRID_FREQUENCY_HZ, frequency,
-                ElementToChannelConverter.SCALE_FACTOR_MINUS_2);
+        // Frequency: 0.01 Hz/bit -> Millihertz (x10)
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_GRID_FREQUENCY_mHz, frequency,
+                ElementToChannelConverter.SCALE_FACTOR_1);
 
-        // Temperature 0.1 °C/bit
+        // Temperature: 0.1 °C/bit -> °C (rounds to Int)
         this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_TEMPERATURE_C, temperature,
                 ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
 
-        // PV voltages 0.1 V/bit
-        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV1_VOLTAGE_V, pv1Voltage,
-                ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
-        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV2_VOLTAGE_V, pv2Voltage,
-                ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
-        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV3_VOLTAGE_V, pv3Voltage,
-                ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
-        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV4_VOLTAGE_V, pv4Voltage,
-                ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
-        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV5_VOLTAGE_V, pv5Voltage,
-                ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
-        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV6_VOLTAGE_V, pv6Voltage,
-                ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
+        // PV Voltages: 0.1 V/bit -> Millivolt (x100)
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV1_VOLTAGE_mV, pv1Voltage,
+                ElementToChannelConverter.SCALE_FACTOR_2);
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV2_VOLTAGE_mV, pv2Voltage,
+                ElementToChannelConverter.SCALE_FACTOR_2);
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV3_VOLTAGE_mV, pv3Voltage,
+                ElementToChannelConverter.SCALE_FACTOR_2);
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV4_VOLTAGE_mV, pv4Voltage,
+                ElementToChannelConverter.SCALE_FACTOR_2);
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV5_VOLTAGE_mV, pv5Voltage,
+                ElementToChannelConverter.SCALE_FACTOR_2);
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV6_VOLTAGE_mV, pv6Voltage,
+                ElementToChannelConverter.SCALE_FACTOR_2);
 
-        // PV currents 0.01 A/bit
-        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV1_CURRENT_A, pv1Current,
-                ElementToChannelConverter.SCALE_FACTOR_MINUS_2);
-        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV2_CURRENT_A, pv2Current,
-                ElementToChannelConverter.SCALE_FACTOR_MINUS_2);
-        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV3_CURRENT_A, pv3Current,
-                ElementToChannelConverter.SCALE_FACTOR_MINUS_2);
-        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV4_CURRENT_A, pv4Current,
-                ElementToChannelConverter.SCALE_FACTOR_MINUS_2);
-        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV5_CURRENT_A, pv5Current,
-                ElementToChannelConverter.SCALE_FACTOR_MINUS_2);
-        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV6_CURRENT_A, pv6Current,
-                ElementToChannelConverter.SCALE_FACTOR_MINUS_2);
+        // PV Currents: 0.01 A/bit -> Milliampere (x10)
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV1_CURRENT_mA, pv1Current,
+                ElementToChannelConverter.SCALE_FACTOR_1);
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV2_CURRENT_mA, pv2Current,
+                ElementToChannelConverter.SCALE_FACTOR_1);
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV3_CURRENT_mA, pv3Current,
+                ElementToChannelConverter.SCALE_FACTOR_1);
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV4_CURRENT_mA, pv4Current,
+                ElementToChannelConverter.SCALE_FACTOR_1);
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV5_CURRENT_mA, pv5Current,
+                ElementToChannelConverter.SCALE_FACTOR_1);
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV6_CURRENT_mA, pv6Current,
+                ElementToChannelConverter.SCALE_FACTOR_1);
 
-        // PV power 0.1 W/bit
+        // PV power: 0.1 W/bit -> W (rounds to Int)
         this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV1_POWER_W, pv1Power,
                 ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
         this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV2_POWER_W, pv2Power,
@@ -1011,34 +1014,33 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM5_CODE, alarm5);
         this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM6_CODE, alarm6);
 
-        // Per-Port Limit in Prozent (wird von applyActivePowerLimitFromChannel() gesetzt)
+        // Per-Port Limit in Prozent
         this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT, this.portTempLimitActivePower);
-
-        /*
-         * Tasks
-         */
 
         return new ModbusProtocol(this,
 
-                // Serial number: small, low priority
-                new FC4ReadInputRegistersTask(base, Priority.LOW, serial),
-
-                // Realtime block 0x38E7..0x390D in einem Task
-                new FC4ReadInputRegistersTask(base + 0x07, Priority.HIGH,
+                // Single read: 0x38E0..0x390D
+                new FC4ReadInputRegistersTask(base, Priority.HIGH,
+                        serial,
+                        totalProductionWh, todayProductionWh,
                         activePower, reactivePower, powerFactor,
                         vphA, vphB, vphC,
                         uab, ubc, uca,
                         iphA, iphB, iphC,
                         frequency, temperature,
-                        pv1Voltage, pv2Voltage, pv3Voltage, pv4Voltage, pv5Voltage, pv6Voltage,
-                        pv1Current, pv2Current, pv3Current, pv4Current, pv5Current, pv6Current,
-                        pv1Power, pv2Power, pv3Power, pv4Power, pv5Power, pv6Power,
+                        pv1Voltage, pv1Current, pv1Power,
+                        pv2Voltage, pv2Current, pv2Power,
+                        pv3Voltage, pv3Current, pv3Power,
+                        pv4Voltage, pv4Current, pv4Power,
+                        pv5Voltage, pv5Current, pv5Power,
+                        pv6Voltage, pv6Current, pv6Power,
                         status, alarm1, alarm2, alarm3, alarm4, alarm5, alarm6),
 
                 // Write task: per-port ON/OFF + Temporary Limit Active Power [%]
                 new FC16WriteRegistersTask(portBase, this.portOnOff, this.portTempLimitActivePower));
     }
-
+    
+    
     @Override
     public ModbusSlaveTable getModbusSlaveTable(AccessMode accessMode) {
         return new ModbusSlaveTable(//
@@ -1145,6 +1147,56 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         sb.append("|alarms=").append(alarmSummary);
 
         return sb.toString();
+    }
+    
+    
+
+    /**
+     * Sammelt alle Channel-Werte.
+     * 
+     */
+    public String collectDebugData() {
+        return Stream.of(
+                // Eigene Channels
+                PvInverterHoymilesHMSHMT.ChannelId.values(),
+                // Standard OpenEMS Channels
+                OpenemsComponent.ChannelId.values(),
+                // Modbus Channels
+                ModbusComponent.ChannelId.values(),
+                // WICHTIG: Meter Werte (ActivePower, L1, L2, L3)
+                io.openems.edge.meter.api.ElectricityMeter.ChannelId.values(),
+                // WICHTIG: Inverter Limit Werte (ActivePowerLimit)
+                io.openems.edge.pvinverter.api.ManagedSymmetricPvInverter.ChannelId.values()
+            )
+            .flatMap(Arrays::stream)
+            .map(id -> {
+                try {
+                    return id.name() + "=" + this.channel(id).value().asString();
+                } catch (Exception e) {
+                    return id.name() + "=n/a";
+                }
+            })
+            .collect(Collectors.joining("; \n"));
+    }    
+    
+    /**
+     * Überschreibt/Nutzt logDebug für erweiterte Ausgaben.
+     */
+    @Override
+    protected void logDebug(Logger log, String message) {
+        // Prüfen, ob Debugging generell in der Config aktiv ist
+        if (this.config.debugMode()) {
+            
+            // Prüfen, ob der ERWEITERTE Modus aktiv ist
+            if (this.config.extendedDebugMode()) {
+                this.logInfo(log, "\n #################### EXTENDED DEBUG START ####################");
+                this.logInfo(log, this.collectDebugData());
+                this.logInfo(log, "\n #################### EXTENDED DEBUG END ####################");
+            }
+            
+            // Die eigentliche Nachricht loggen
+            this.logInfo(log, message);
+        }
     }
 }
 
