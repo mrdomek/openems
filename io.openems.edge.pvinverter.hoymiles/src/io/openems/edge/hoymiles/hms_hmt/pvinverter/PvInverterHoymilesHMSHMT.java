@@ -35,6 +35,21 @@ public interface PvInverterHoymilesHMSHMT extends ManagedSymmetricPvInverter, El
                     Doc.of(OpenemsType.STRING) //
                             .text("Serial number of Microinverter 1 (register 0x38E0 ff.)")),
 
+            MI1_SERIAL_WORD_0( //
+                    Doc.of(OpenemsType.INTEGER) //
+                            .unit(Unit.NONE) //
+                            .text("Serial number word 0 (uint16) of Microinverter 1 (register 0x38E0).")),
+
+            MI1_SERIAL_WORD_1( //
+                    Doc.of(OpenemsType.INTEGER) //
+                            .unit(Unit.NONE) //
+                            .text("Serial number word 1 (uint16) of Microinverter 1 (register 0x38E1).")),
+
+            MI1_SERIAL_WORD_2( //
+                    Doc.of(OpenemsType.INTEGER) //
+                            .unit(Unit.NONE) //
+                            .text("Serial number word 2 (uint16) of Microinverter 1 (register 0x38E2).")),
+                       
             MI1_TOTAL_PRODUCTION_WH( //
                     Doc.of(OpenemsType.LONG) //
                             .unit(Unit.WATT_HOURS) //

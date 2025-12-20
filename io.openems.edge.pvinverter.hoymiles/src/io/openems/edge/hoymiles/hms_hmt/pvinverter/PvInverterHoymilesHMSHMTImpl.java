@@ -34,7 +34,6 @@ import io.openems.edge.bridge.modbus.api.ElementToChannelConverter;
 import io.openems.edge.bridge.modbus.api.ModbusComponent;
 import io.openems.edge.bridge.modbus.api.ModbusProtocol;
 import io.openems.edge.bridge.modbus.api.element.SignedWordElement;
-import io.openems.edge.bridge.modbus.api.element.StringWordElement;
 import io.openems.edge.bridge.modbus.api.element.UnsignedDoublewordElement;
 import io.openems.edge.bridge.modbus.api.task.FC16WriteRegistersTask;
 import io.openems.edge.bridge.modbus.api.task.FC4ReadInputRegistersTask;
@@ -93,6 +92,20 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
      * ändert, wird kein neuer Modbus-Schreibvorgang ausgelöst.
      */
     private static final int LIMIT_HYSTERESIS_W = 100;
+    
+ // --- PV limit (controller -> percent write) ---
+    private volatile Integer pendingLimitW = null; // last limit request from controller (W)
+    private volatile long lastLimitWriteMs = 0L;   // throttle timestamp
+    private volatile Integer lastLimitPercent = null; // last percent we actually scheduled to write
+    private static final long LIMIT_WRITE_MIN_INTERVAL_MS = 5_000L; // do not write faster than every 5s
+
+    
+  //mrdomek Rate-limit Modbus writes to the DTU to avoid stalling live data.
+    private static final long MIN_LIMIT_WRITE_INTERVAL_MS = 5_000L;
+
+    // Timestamp of last scheduled limit write (percent) to Modbus.
+    private long lastLimitWriteTimestampMs = 0L;
+    
 
     // Selected microinverter number (1..99); used to shift the register block.
     private int microinverterNumber = 1;
@@ -105,6 +118,11 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
     // Zuletzt auf den Bus geschriebene Werte, um unnötige Schreibvorgänge zu vermeiden.
     private Boolean lastWrittenPortOn = null;
     private Short lastWrittenLimitPercent = null;
+    
+    
+  //mrdomek Cache the latest requested limit in W because Channel#setNextValue is not readable via value() in the same cycle.
+    private Integer requestedLimitW = null;
+
 
     // Zuletzt "akzeptierter" Zielwert in W für die Limitierung (für Hysterese).
     // Wird verwendet, um kleine Änderungen (z.B. +-100 W) zu ignorieren.
@@ -119,7 +137,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
                 PvInverterHoymilesHMSHMT.ChannelId.values() //
         );
     }
-
+    
     @Override
     @Reference(policy = STATIC, policyOption = GREEDY, cardinality = MANDATORY)
     protected void setModbus(BridgeModbus modbus) {
@@ -202,6 +220,15 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         if (this.config == null) {
             return;
         }
+
+        //mrdomek Serial is 3x uint16 words (hex); convert to string each cycle, independent of power validity.
+        this.updateMi1SerialFromWords();
+        
+     // Aktive Leistungsbegrenzung anwenden, falls nicht im Read-Only-Modus
+        if (!this.config.readOnly()) {
+            this.applyActivePowerLimitFromChannel();
+        }
+
 
         /*
          * Get total AC active power from microinverter block.
@@ -305,12 +332,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_INTERPRETED_STATUS)
                 .setNextValue(interpretedStatus);
 
-        // Aktive Leistungsbegrenzung anwenden, falls nicht im Read-Only-Modus
-        if (!this.config.readOnly()) {
-            this.applyActivePowerLimitFromChannel();
-            
-        }
-        // Trigger für die erweiterte Debug-Ausgabe
+       // Trigger für die erweiterte Debug-Ausgabe
         this.logDebug(this.log, "Next Cycle");
     }
 
@@ -319,29 +341,31 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         /*
          * Semantik:
          * - power == null  -> externes Limit wird entfernt
-         *                     => Inverter soll wieder mit 100 % arbeiten
          * - power >= 0     -> neuer Sollwert in W
          *
-         * Die eigentliche Umrechnung W -> % und das Schreiben auf die Hoymiles-Register
-         * übernimmt applyActivePowerLimitFromChannel().
+         * Wichtig:
+         * - OpenEMS-typisch kommt der wirksame Sollwert über
+         *   ManagedSymmetricPvInverter.ChannelId.ACTIVE_POWER_LIMIT.
+         * - Wir spiegeln den Wert zusätzlich nach MI1_LIMIT_ACTIVE_POWER_W,
+         *   damit debugLog() / UI sauber etwas anzeigen können.
          */
 
-        if (power == null) {
-            // Kein aktiv gesetztes Limit mehr -> Channel leeren
-            this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_W)
-                    .setNextValue(null);
+        final Integer normalized = (power == null) ? null : Integer.valueOf(Math.max(0, power.intValue()));
 
+        this.channel(ManagedSymmetricPvInverter.ChannelId.ACTIVE_POWER_LIMIT).setNextValue(normalized);
+        this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_W).setNextValue(normalized);
+
+        //mrdomek Debug-only: prove that the manager/controller actually calls this method.
+        if (this.config != null && this.config.debugMode()) {
+            this.logInfo(this.log, String.format("Hoymiles: setActivePowerLimit() received [%s W].",
+                    normalized == null ? "null" : normalized.toString()));
+        }
+
+        if (normalized == null) {
             // Hysterese-Zustand zurücksetzen; den Reset auf 100 % macht
             // applyActivePowerLimitFromChannel() beim nächsten Zyklus.
             this.lastTargetLimitW = null;
-            return;
         }
-
-        // Negative Werte machen bei einem PV-Limit keinen Sinn -> auf 0 clampen
-        int limitW = Math.max(0, power.intValue());
-
-        this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_W)
-                .setNextValue(limitW);
     }
     
     /**
@@ -589,6 +613,30 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
                 .map(v -> ((Number) v).intValue()) //
                 .orElse(0);
     }
+
+    private void updateMi1SerialFromWords() {
+        final Optional<?> w0Opt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_SERIAL_WORD_0).value().asOptional();
+        final Optional<?> w1Opt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_SERIAL_WORD_1).value().asOptional();
+        final Optional<?> w2Opt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_SERIAL_WORD_2).value().asOptional();
+
+        if (!w0Opt.isPresent() || !w1Opt.isPresent() || !w2Opt.isPresent()) {
+            return;
+        }
+        if (!(w0Opt.get() instanceof Number) || !(w1Opt.get() instanceof Number) || !(w2Opt.get() instanceof Number)) {
+            return;
+        }
+
+        final int w0 = ((Number) w0Opt.get()).intValue();
+        final int w1 = ((Number) w1Opt.get()).intValue();
+        final int w2 = ((Number) w2Opt.get()).intValue();
+
+        //mrdomek Serial is 3x uint16; mask avoids negative values from SignedWordElement.
+        final String sn = String.format("%04X%04X%04X", (w0 & 0xFFFF), (w1 & 0xFFFF), (w2 & 0xFFFF));
+
+        this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_SERIAL).setNextValue(sn);
+    }
+    
+    
         
     /**
      * Helper: set per-port ON/OFF register.
@@ -660,6 +708,9 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
             return; // sollte nicht passieren
         }
 
+        final long now = System.currentTimeMillis();
+        final boolean canWriteNow = (now - this.lastLimitWriteTimestampMs) >= MIN_LIMIT_WRITE_INTERVAL_MS;
+
         /*
          * Fallback: kein aktiver Controller / Manager.
          *
@@ -677,7 +728,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
          * Dadurch fällt der Wechselrichter bei deaktivierten
          * Controllern automatisch auf "volle Leistung" zurück.
          */
-        Optional<?> opt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_W)
+        Optional<?> opt = this.channel(ManagedSymmetricPvInverter.ChannelId.ACTIVE_POWER_LIMIT)
                 .value()
                 .asOptional();
 
@@ -688,6 +739,9 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
          *   (lastWrittenLimitPercent != null && != 100).
          */
         if (!opt.isPresent() || !(opt.get() instanceof Number)) {
+            // Für UI/Debug sichtbar machen
+            this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_W).setNextValue(null);
+
             if (this.lastWrittenLimitPercent != null && this.lastWrittenLimitPercent.shortValue() != 100) {
                 DeviceModel model = (this.config != null) ? this.config.deviceModel() : null;
                 int maxTotalPowerW = (model != null) ? model.getMaxTotalPowerW() : 0;
@@ -697,11 +751,16 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
                     this.setPortOnOff(true);
                     short pct = 100;
 
-                    this.portTempLimitActivePower.setNextWriteValue(Short.valueOf(pct));
+                    // Channel immer setzen (UI), Write nur rate-limited
                     this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
                             .setNextValue(Integer.valueOf(pct));
 
-                    this.lastWrittenLimitPercent = Short.valueOf(pct);
+                    //mrdomek Enforce rate-limit for DTU writes (percent limit).
+                    if (canWriteNow) {
+                        this.portTempLimitActivePower.setNextWriteValue(Short.valueOf(pct));
+                        this.lastWrittenLimitPercent = Short.valueOf(pct);
+                        this.lastLimitWriteTimestampMs = now;
+                    }
                 }
             }
 
@@ -710,7 +769,11 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
             return;
         }
 
-        int targetLimitW = ((Number) opt.get()).intValue();
+        int targetLimitW = Math.max(0, ((Number) opt.get()).intValue());
+
+        // Für UI/Debug spiegeln (damit nicht mehr UNDEFINED)
+        this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_W)
+                .setNextValue(Integer.valueOf(targetLimitW));
 
         DeviceModel model = (this.config != null) ? this.config.deviceModel() : null;
         int maxTotalPowerW = (model != null) ? model.getMaxTotalPowerW() : 0;
@@ -805,8 +868,9 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         // Normalfall: innerhalb des Bereichs -> WR EIN + Limit
         this.setPortOnOff(true);
 
+        // Channel immer setzen (UI/Debug), Write nur wenn geändert + rate-limited
         this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
-                .setNextValue(percent);
+                .setNextValue(Integer.valueOf(percent));
 
         short newPercentShort = (short) percent;
 
@@ -814,8 +878,14 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         if (this.lastWrittenLimitPercent == null
                 || this.lastWrittenLimitPercent.shortValue() != newPercentShort) {
 
+            //mrdomek Enforce rate-limit for DTU writes (percent limit).
+            if (!canWriteNow) {
+                return;
+            }
+
             this.portTempLimitActivePower.setNextWriteValue(Short.valueOf(newPercentShort));
             this.lastWrittenLimitPercent = Short.valueOf(newPercentShort);
+            this.lastLimitWriteTimestampMs = now;
         }
 
         // Diesen effektiven Sollwert in W als Basis für die nächste Hysterese merken
@@ -847,7 +917,10 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
          * Modbus elements
          */
         // Serial number: 3 words at base (0x38E0..0x38E2)
-        final StringWordElement serial = new StringWordElement(base, 3);
+        //mrdomek Do NOT decode as ASCII; read 3x uint16 and convert to hex string in handleEvent().
+        final SignedWordElement serialW0 = new SignedWordElement(base + 0x00); // 0x38E0
+        final SignedWordElement serialW1 = new SignedWordElement(base + 0x01); // 0x38E1
+        final SignedWordElement serialW2 = new SignedWordElement(base + 0x02); // 0x38E2
 
         // Production counters
         final UnsignedDoublewordElement totalProductionWh = new UnsignedDoublewordElement(base + 0x03); // 0x38E3..0x38E4
@@ -916,7 +989,10 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
          */
 
         // Serial + Production
-        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_SERIAL, serial);
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_SERIAL_WORD_0, serialW0);
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_SERIAL_WORD_1, serialW1);
+        this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_SERIAL_WORD_2, serialW2);
+
         this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_TOTAL_PRODUCTION_WH, totalProductionWh);
         this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_TODAY_PRODUCTION_WH, todayProductionWh);
 
@@ -1021,7 +1097,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
                 // Single read: 0x38E0..0x390D
                 new FC4ReadInputRegistersTask(base, Priority.HIGH,
-                        serial,
+                        serialW0, serialW1, serialW2,
                         totalProductionWh, todayProductionWh,
                         activePower, reactivePower, powerFactor,
                         vphA, vphB, vphC,
@@ -1132,7 +1208,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         /*
          * Zustands-/Alarm-Infos:
          * - Health-State (OK/WARNING/FAULT/NO_DATA)
-         * - interpretierter Status (PRODUCING/STANDBY/...)
+         * - interpretierter Status (PRODUCING/STANDBY/... )
          * - zusammengefasste Alarmbits
          */
         String health = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_HEALTH_STATE)
@@ -1199,4 +1275,3 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
         }
     }
 }
-
