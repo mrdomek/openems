@@ -2,6 +2,7 @@ package io.openems.edge.hoymiles.hms_hmt.pvinverter;
 
 import org.osgi.service.event.EventHandler;
 
+import io.openems.common.channel.Level;
 import io.openems.common.channel.Unit;
 import io.openems.common.types.OpenemsType;
 import io.openems.edge.bridge.modbus.api.ModbusComponent;
@@ -308,6 +309,19 @@ public interface PvInverterHoymilesHMSHMT extends ManagedSymmetricPvInverter, El
                             .unit(Unit.NONE) //
                             .text("True if any of the alarm registers (0x3908..0x390D) is non-zero.")),
 
+            /*
+             * OpenEMS StateChannels:
+             * //mrdomek These must use Level.* so OpenEMS can propagate WARNING/FAULT into component STATE.
+             */
+            MI1_FAULT( //
+                    Doc.of(Level.FAULT) //
+                            .text("Microinverter is in FAULT state (any alarm register non-zero).")),
+
+            MI1_WARNING( //
+                    Doc.of(Level.WARNING) //
+                            .text("Microinverter is in WARNING state (status != 0, but no alarms).")),
+
+            
             MI1_HEALTH_STATE( //
                     Doc.of(OpenemsType.STRING) //
                             .unit(Unit.NONE) //

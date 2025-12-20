@@ -103,6 +103,11 @@ public enum DeviceModel {
         return this.maxTotalPowerW;
     }
 
+    public int getMaxApparentPowerVa() {
+        //mrdomek Hoymiles models are typically rated close to PF=1.0, so Smax ~= Pmax. This can be refined later.
+        return this.maxTotalPowerW;
+    }   
+    
     public boolean isThreePhase() {
         return this.threePhase;
     }

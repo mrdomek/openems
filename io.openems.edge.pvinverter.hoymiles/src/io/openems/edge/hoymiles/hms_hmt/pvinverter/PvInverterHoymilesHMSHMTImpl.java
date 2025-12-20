@@ -181,6 +181,9 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		// Konfigurierte Phase ins Channel-Model schreiben
 		this.channel(PvInverterHoymilesHMSHMT.ChannelId.CONFIGURED_PHASE) //
 				.setNextValue(config.phase().name());
+		
+		this.updateStaticPowerLimitsFromModel();
+
 	}
 
 	@Override
@@ -509,9 +512,9 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
 	private void updateHealthFromStatusAndAlarms() {
 		boolean hasData = false;
-		boolean hasAlarm = false;
 		Integer status = null;
 
+		// Read status code
 		Optional<?> statusOpt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_STATUS_CODE)
 				.value()
 				.asOptional();
@@ -520,56 +523,74 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 			hasData = true;
 		}
 
-		PvInverterHoymilesHMSHMT.ChannelId[] alarmIds = new PvInverterHoymilesHMSHMT.ChannelId[] {
-				PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM1_CODE,
-				PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM2_CODE,
-				PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM3_CODE,
-				PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM4_CODE,
-				PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM5_CODE,
-				PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM6_CODE
-		};
+		// Read alarm registers 1..6 (treat missing/non-number as 0, but keep hasData if we saw any number)
+		int alarm1 = 0;
+		int alarm2 = 0;
+		int alarm3 = 0;
+		int alarm4 = 0;
+		int alarm5 = 0;
+		int alarm6 = 0;
 
-		for (PvInverterHoymilesHMSHMT.ChannelId alarmId : alarmIds) {
-			Optional<?> alarmOpt = this.channel(alarmId).value().asOptional();
-			if (alarmOpt.isPresent() && alarmOpt.get() instanceof Number) {
-				int alarmValue = ((Number) alarmOpt.get()).intValue();
-				hasData = true;
-				if (alarmValue != 0) {
-					hasAlarm = true;
-				}
-			}
+		Optional<?> a1 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM1_CODE).value().asOptional();
+		if (a1.isPresent() && a1.get() instanceof Number) {
+			alarm1 = ((Number) a1.get()).intValue();
+			hasData = true;
 		}
 
-		String health;
-		if (!hasData) {
-			health = "NO_DATA";
-		} else if (hasAlarm) {
-			health = "FAULT";
-		} else if (status != null && status != 0) {
-			health = "WARNING";
-		} else {
-			health = "OK";
+		Optional<?> a2 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM2_CODE).value().asOptional();
+		if (a2.isPresent() && a2.get() instanceof Number) {
+			alarm2 = ((Number) a2.get()).intValue();
+			hasData = true;
 		}
 
+		Optional<?> a3 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM3_CODE).value().asOptional();
+		if (a3.isPresent() && a3.get() instanceof Number) {
+			alarm3 = ((Number) a3.get()).intValue();
+			hasData = true;
+		}
+
+		Optional<?> a4 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM4_CODE).value().asOptional();
+		if (a4.isPresent() && a4.get() instanceof Number) {
+			alarm4 = ((Number) a4.get()).intValue();
+			hasData = true;
+		}
+
+		Optional<?> a5 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM5_CODE).value().asOptional();
+		if (a5.isPresent() && a5.get() instanceof Number) {
+			alarm5 = ((Number) a5.get()).intValue();
+			hasData = true;
+		}
+
+		Optional<?> a6 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM6_CODE).value().asOptional();
+		if (a6.isPresent() && a6.get() instanceof Number) {
+			alarm6 = ((Number) a6.get()).intValue();
+			hasData = true;
+		}
+
+		final boolean hasAlarm = HoymilesMi1StateLogic.hasAnyAlarm(alarm1, alarm2, alarm3, alarm4, alarm5, alarm6);
+		final String health = HoymilesMi1StateLogic.toHealthState(hasData, hasAlarm, status);
+
+		// Existing info channels
 		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_HAS_ALARM).setNextValue(hasAlarm);
 		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_HEALTH_STATE).setNextValue(health);
+
+		// OpenEMS Level-channels (used by core to compute component STATE)
+		final boolean fault = HoymilesMi1StateLogic.isFault(hasData, alarm1, alarm2, alarm3, alarm4, alarm5, alarm6);
+		final boolean warning = HoymilesMi1StateLogic.isWarning(hasData, hasAlarm, status);
+
+		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_FAULT).setNextValue(fault);
+		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_WARNING).setNextValue(warning);
 	}
 
 	private boolean hasAnyHoymilesAlarm() {
-		return isNonZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM1_CODE)
-				|| isNonZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM2_CODE)
-				|| isNonZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM3_CODE)
-				|| isNonZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM4_CODE)
-				|| isNonZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM5_CODE)
-				|| isNonZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM6_CODE);
-	}
+		int alarm1 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM1_CODE);
+		int alarm2 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM2_CODE);
+		int alarm3 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM3_CODE);
+		int alarm4 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM4_CODE);
+		int alarm5 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM5_CODE);
+		int alarm6 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM6_CODE);
 
-	private boolean isNonZero(PvInverterHoymilesHMSHMT.ChannelId channelId) {
-		Optional<?> opt = this.channel(channelId).value().asOptional();
-		if (!opt.isPresent() || !(opt.get() instanceof Number)) {
-			return false;
-		}
-		return ((Number) opt.get()).intValue() != 0;
+		return HoymilesMi1StateLogic.hasAnyAlarm(alarm1, alarm2, alarm3, alarm4, alarm5, alarm6);
 	}
 
 	private int readIntChannelOrDefault(PvInverterHoymilesHMSHMT.ChannelId channelId, int defaultValue) {
@@ -581,22 +602,33 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 	}
 
 	private static String interpretHoymilesStatus(int totalPower, int rawStatusCode, boolean hasAlarm) {
-		if (hasAlarm) {
-			return "ERROR";
-		}
+		return HoymilesMi1StateLogic.interpretHoymilesStatus(totalPower, rawStatusCode, hasAlarm);
+	}
+	
+	private void updateStaticPowerLimitsFromModel() {
+	    if (this.config == null) {
+	        return;
+	    }
+	    final DeviceModel model = this.config.deviceModel();
+	    if (model == null) {
+	        return;
+	    }
 
-		if (totalPower > 0) {
-			return "PRODUCING";
-		}
+	    final int pMaxW = model.getMaxTotalPowerW();
+	    final int sMaxVa = model.getMaxApparentPowerVa();
 
-		if (rawStatusCode == 0) {
-			return "STANDBY";
-		}
+	    // MaxActivePower (W) – capability for OpenEMS algorithms
+	    this.channel(io.openems.edge.pvinverter.api.ManagedSymmetricPvInverter.ChannelId.MAX_ACTIVE_POWER)
+	            .setNextValue(Integer.valueOf(pMaxW));
 
-		return "OFF_OR_UNKNOWN";
+	    // MaxApparentPower (VA) – required for limitation algorithms (analysis report)
+	    this.channel(io.openems.edge.pvinverter.api.ManagedSymmetricPvInverter.ChannelId.MAX_APPARENT_POWER)
+	            .setNextValue(Integer.valueOf(sMaxVa));
 	}
 
+
 	private void updateAlarmSummary() {
+		// Read all relevant 16-bit words (treat missing/null as 0)
 		int status = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_STATUS_CODE);
 		int alarm1 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM1_CODE);
 		int alarm2 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM2_CODE);
@@ -605,10 +637,9 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		int alarm5 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM5_CODE);
 		int alarm6 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM6_CODE);
 
-		int combined = (status | alarm1 | alarm2 | alarm3 | alarm4 | alarm5 | alarm6) & 0xFFFF;
+		String summary = HoymilesMi1StateLogic.buildAlarmSummary(status, alarm1, alarm2, alarm3, alarm4, alarm5, alarm6);
 
-		String summary = HoymilesAlarmBit.toShortString(combined);
-
+		// Write to channel for UI
 		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM_SUMMARY).setNextValue(summary);
 	}
 
