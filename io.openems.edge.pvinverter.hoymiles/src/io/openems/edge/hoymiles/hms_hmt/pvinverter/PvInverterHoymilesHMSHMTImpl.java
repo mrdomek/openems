@@ -356,41 +356,90 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
 		final long now = System.currentTimeMillis();
 
-		DeviceModel model = (this.config != null) ? this.config.deviceModel() : null;
-		int maxTotalPowerW = (model != null) ? model.getMaxTotalPowerW() : 0;
+		final DeviceModel model = (this.config != null) ? this.config.deviceModel() : null;
+		final int maxTotalPowerW = (model != null) ? model.getMaxTotalPowerW() : 0;
 
 		int minPercent = 0;
 		if (model != null && model.getGeneration() != null) {
 			minPercent = model.getGeneration().getMinPercent();
 		}
 
+		// Target AC limit from controller/manager (cached via setActivePowerLimit()).
 		final Integer targetLimitW = this.pendingLimitW;
 
-		this.powerLimitHandler.apply(targetLimitW, maxTotalPowerW, minPercent, now, new HoymilesPowerLimitHandler.Actions() {
+		/*
+		 * Measurements for closed-loop regulation.
+		 *
+		 * Hoymiles percent limit is observed to behave like "percent of available DC power".
+		 * To reach an AC target under varying irradiation we need:
+		 * - actualAcPowerW: current AC output power
+		 * - actualDcPowerW: sum of PV input powers (represents currently available DC power)
+		 * - dcPeakTotalW: sum of configured module peak powers (fallback if DC powers are not yet available)
+		 */
+		final int actualAcPowerW = readIntChannelOrDefault(PvInverterHoymilesHMSHMT.ChannelId.MI1_ACTIVE_POWER_W, 0);
 
-			@Override
-			public void setPortOnOff(boolean on) {
-				PvInverterHoymilesHMSHMTImpl.this.setPortOnOff(on);
-			}
+		int actualDcPowerW = 0;
+		int dcPeakTotalW = 0;
 
-			@Override
-			public void setLimitWUi(Integer w) {
-				PvInverterHoymilesHMSHMTImpl.this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_W)
-						.setNextValue(w);
+		final int inputs = (model != null) ? Math.max(0, Math.min(model.getInputChannels(), 6)) : 0;
+		for (int i = 1; i <= inputs; i++) {
+			switch (i) {
+			case 1:
+				actualDcPowerW += readIntChannelOrDefault(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV1_POWER_W, 0);
+				dcPeakTotalW += (this.config != null) ? this.config.pv1ModulePeakPowerW() : 0;
+				break;
+			case 2:
+				actualDcPowerW += readIntChannelOrDefault(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV2_POWER_W, 0);
+				dcPeakTotalW += (this.config != null) ? this.config.pv2ModulePeakPowerW() : 0;
+				break;
+			case 3:
+				actualDcPowerW += readIntChannelOrDefault(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV3_POWER_W, 0);
+				dcPeakTotalW += (this.config != null) ? this.config.pv3ModulePeakPowerW() : 0;
+				break;
+			case 4:
+				actualDcPowerW += readIntChannelOrDefault(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV4_POWER_W, 0);
+				dcPeakTotalW += (this.config != null) ? this.config.pv4ModulePeakPowerW() : 0;
+				break;
+			case 5:
+				actualDcPowerW += readIntChannelOrDefault(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV5_POWER_W, 0);
+				dcPeakTotalW += (this.config != null) ? this.config.pv5ModulePeakPowerW() : 0;
+				break;
+			case 6:
+				actualDcPowerW += readIntChannelOrDefault(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV6_POWER_W, 0);
+				dcPeakTotalW += (this.config != null) ? this.config.pv6ModulePeakPowerW() : 0;
+				break;
+			default:
+				break;
 			}
+		}
 
-			@Override
-			public void setLimitPercentUi(Integer percent) {
-				PvInverterHoymilesHMSHMTImpl.this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
-						.setNextValue(percent);
-			}
+		this.powerLimitHandler.applyAcRegulated(targetLimitW, maxTotalPowerW, minPercent, actualAcPowerW, actualDcPowerW,
+				dcPeakTotalW, now, new HoymilesPowerLimitHandler.Actions() {
 
-			@Override
-			public void schedulePercentWrite(short percent) {
-				PvInverterHoymilesHMSHMTImpl.this.portTempLimitActivePower.setNextWriteValue(Short.valueOf(percent));
-			}
-		});
+					@Override
+					public void setPortOnOff(boolean on) {
+						PvInverterHoymilesHMSHMTImpl.this.setPortOnOff(on);
+					}
+
+					@Override
+					public void setLimitWUi(Integer w) {
+						PvInverterHoymilesHMSHMTImpl.this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_W)
+								.setNextValue(w);
+					}
+
+					@Override
+					public void setLimitPercentUi(Integer percent) {
+						PvInverterHoymilesHMSHMTImpl.this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
+								.setNextValue(percent);
+					}
+
+					@Override
+					public void schedulePercentWrite(short percent) {
+						PvInverterHoymilesHMSHMTImpl.this.portTempLimitActivePower.setNextWriteValue(Short.valueOf(percent));
+					}
+				});
 	}
+
 
 	private static int[] splitPowerByPhase(boolean threePhaseDevice,
 			PvInverterHoymilesHMSHMT.Phase phase, int totalPower) {
