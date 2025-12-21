@@ -200,6 +200,11 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 			return;
 		}
 
+		//mrdomek "enabled=0" does not stop DS activation; we explicitly stop all runtime logic here.
+		if (!this.isEnabled()) {
+			return;
+		}
+
 		this.updateMetaAndLimits();
 
 		final Integer pTotal = this.updateMeterPowersAndGetTotalPowerW();
@@ -209,7 +214,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
 		this.updateStatusAndUtilization(pTotal);
 	}
-
+	
 	private void updateMetaAndLimits() {
 		//mrdomek Serial is 3x uint16 words (hex); convert to string each cycle, independent of power validity.
 		this.updateMi1SerialFromWords();
@@ -344,6 +349,11 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
 	private void applyActivePowerLimitFromChannel() {
 		if (this.portTempLimitActivePower == null) {
+			//mrdomek If this is null, we cannot schedule a Modbus write at all (readOnly mode or protocol not initialized).
+			if (this.config != null && this.config.debugMode()) {
+				this.logInfo(this.log,
+						"PowerLimit: portTempLimitActivePower==null -> skipping power limit writes (readOnly/protocol not initialized).");
+			}
 			return;
 		}
 
@@ -362,10 +372,9 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		 * If this is UNDEFINED, the issue is upstream (manager/controller), not inside this component.
 		 */
 		Integer targetLimitW = null;
-		Optional<?> opt = this.channel(ManagedSymmetricPvInverter.ChannelId.ACTIVE_POWER_LIMIT)
+		Optional<?> opt = this.channel(io.openems.edge.pvinverter.api.ManagedSymmetricPvInverter.ChannelId.ACTIVE_POWER_LIMIT)
 				.value()
 				.asOptional();
-
 		if (opt.isPresent() && opt.get() instanceof Number) {
 			targetLimitW = Integer.valueOf(((Number) opt.get()).intValue());
 		}
@@ -443,6 +452,13 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 					@Override
 					public void schedulePercentWrite(short percent) {
 						PvInverterHoymilesHMSHMTImpl.this.portTempLimitActivePower.setNextWriteValue(Short.valueOf(percent));
+					}
+
+					@Override
+					public void debug(String message) {
+						if (PvInverterHoymilesHMSHMTImpl.this.config != null && PvInverterHoymilesHMSHMTImpl.this.config.debugMode()) {
+							PvInverterHoymilesHMSHMTImpl.this.logInfo(PvInverterHoymilesHMSHMTImpl.this.log, message);
+						}
 					}
 				});
 	}
