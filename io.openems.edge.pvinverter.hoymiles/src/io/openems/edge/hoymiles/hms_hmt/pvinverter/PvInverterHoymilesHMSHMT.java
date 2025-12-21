@@ -313,14 +313,15 @@ public interface PvInverterHoymilesHMSHMT extends ManagedSymmetricPvInverter, El
              * OpenEMS StateChannels:
              * //mrdomek These must use Level.* so OpenEMS can propagate WARNING/FAULT into component STATE.
              */
-            MI1_FAULT( //
-                    Doc.of(Level.FAULT) //
-                            .text("Microinverter is in FAULT state (any alarm register non-zero).")),
-
             MI1_WARNING( //
                     Doc.of(Level.WARNING) //
-                            .text("Microinverter is in WARNING state (status != 0, but no alarms).")),
+                            .text("Microinverter WARNING (derived): non-fatal condition, e.g. derating or missing PV inputs. "
+                                    + "May be present together with MI1_HAS_ALARM depending on alarm-bit classification.")),
 
+            MI1_FAULT( //
+                    Doc.of(Level.FAULT) //
+                            .text("Microinverter FAULT (derived): fatal condition that stops operation. "
+                                    + "Derived from status and alarm bits; see MI1_ALARM_SUMMARY for details.")),
             
             MI1_HEALTH_STATE( //
                     Doc.of(OpenemsType.STRING) //
