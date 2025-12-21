@@ -186,7 +186,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
 	}
 
-	@Override
+
 	@Deactivate
 	protected void deactivate() {
 		super.deactivate();
@@ -367,17 +367,24 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 			minPercent = model.getGeneration().getMinPercent();
 		}
 
-		// Target AC limit from controller/manager (cached via setActivePowerLimit()).
-		final Integer targetLimitW = this.pendingLimitW;
+		/*
+		 * Robust input: ONLY use the standard OpenEMS channel.
+		 * If this is UNDEFINED, the issue is upstream (manager/controller), not inside this component.
+		 */
+		Integer targetLimitW = null;
+		Optional<?> opt = this.channel(ManagedSymmetricPvInverter.ChannelId.ACTIVE_POWER_LIMIT)
+				.value()
+				.asOptional();
+
+		if (opt.isPresent() && opt.get() instanceof Number) {
+			targetLimitW = Integer.valueOf(((Number) opt.get()).intValue());
+		}
+
+		// Mirror for UI/debug
+		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_W).setNextValue(targetLimitW);
 
 		/*
 		 * Measurements for closed-loop regulation.
-		 *
-		 * Hoymiles percent limit is observed to behave like "percent of available DC power".
-		 * To reach an AC target under varying irradiation we need:
-		 * - actualAcPowerW: current AC output power
-		 * - actualDcPowerW: sum of PV input powers (represents currently available DC power)
-		 * - dcPeakTotalW: sum of configured module peak powers (fallback if DC powers are not yet available)
 		 */
 		final int actualAcPowerW = readIntChannelOrDefault(PvInverterHoymilesHMSHMT.ChannelId.MI1_ACTIVE_POWER_W, 0);
 
@@ -416,8 +423,15 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 			}
 		}
 
-		this.powerLimitHandler.applyAcRegulated(targetLimitW, maxTotalPowerW, minPercent, actualAcPowerW, actualDcPowerW,
-				dcPeakTotalW, now, new HoymilesPowerLimitHandler.Actions() {
+		this.powerLimitHandler.applyAcRegulated(
+				targetLimitW,
+				maxTotalPowerW,
+				minPercent,
+				actualAcPowerW,
+				actualDcPowerW,
+				dcPeakTotalW,
+				now,
+				new HoymilesPowerLimitHandler.Actions() {
 
 					@Override
 					public void setPortOnOff(boolean on) {
