@@ -8,7 +8,7 @@ import java.util.List;
  * from DTU data (inverterCount + serial-word0 prefix list).
  */
 //mrdomek Why: keep parsing/math isolated and testable; the Impl just feeds raw values and logs the result.
-public final class HoymilesDtuTopologyStep1 {
+public final class HoymilesDtuTopology {
 
 	public static final int MAX_PORTS = 99;
 
@@ -64,7 +64,7 @@ public final class HoymilesDtuTopologyStep1 {
 		}
 	}
 
-	private HoymilesDtuTopologyStep1() {
+	private HoymilesDtuTopology() {
 	}
 
 	/**
