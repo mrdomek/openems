@@ -90,6 +90,12 @@ public enum DeviceModel {
     public int getPrefix() {
         return this.prefix;
     }
+    
+    public String getSerialPrefixHex() {
+        //mrdomek Keep formatting stable for logs/debug output (4 hex digits like 0x1164)
+        return String.format("0x%04X", this.prefix & 0xFFFF);
+    }
+
 
     public int getInputChannels() {
         return this.inputChannels;
@@ -145,4 +151,22 @@ public enum DeviceModel {
             return this.minPercent;
         }
     }
+
+    /**
+     * Finds a DeviceModel by the first serial-number word (first 4 hex digits).
+     *
+     * @param serialWord0 the first serial word (uint16); may be negative if sourced from SignedWord
+     * @return the matching DeviceModel or null if unknown
+     */
+    public static DeviceModel findBySerialWord0(int serialWord0) {
+        final int prefix = serialWord0 & 0xFFFF; //mrdomek treat as uint16
+        for (var m : DeviceModel.values()) {
+            if (m.prefix == prefix) {
+                return m;
+            }
+        }
+        return null;
+    }
+
+    
 }

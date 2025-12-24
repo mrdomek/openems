@@ -6,7 +6,9 @@ import static org.osgi.service.component.annotations.ReferenceCardinality.MANDAT
 import static org.osgi.service.component.annotations.ReferencePolicy.STATIC;
 import static org.osgi.service.component.annotations.ReferencePolicyOption.GREEDY;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -35,8 +37,11 @@ import io.openems.edge.bridge.modbus.api.ModbusComponent;
 import io.openems.edge.bridge.modbus.api.ModbusProtocol;
 import io.openems.edge.bridge.modbus.api.element.SignedWordElement;
 import io.openems.edge.bridge.modbus.api.element.UnsignedDoublewordElement;
+import io.openems.edge.bridge.modbus.api.element.UnsignedWordElement;
 import io.openems.edge.bridge.modbus.api.task.FC16WriteRegistersTask;
+import io.openems.edge.bridge.modbus.api.task.FC3ReadRegistersTask;
 import io.openems.edge.bridge.modbus.api.task.FC4ReadInputRegistersTask;
+import io.openems.edge.bridge.modbus.api.task.Task;
 import io.openems.edge.common.component.OpenemsComponent;
 import io.openems.edge.common.modbusslave.ModbusSlave;
 import io.openems.edge.common.modbusslave.ModbusSlaveTable;
@@ -93,15 +98,35 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 	private final HoymilesPowerLimitHandler powerLimitHandler =
 			new HoymilesPowerLimitHandler(LIMIT_HYSTERESIS_W, 5_000L);
 
-	// Selected microinverter number (1..99); used to shift the register block.
+	// Selected microinverter number (1..99); used to shift the read register block.
 	private int microinverterNumber = 1;
 
-	// Per-Port ON/OFF (0xD006 + 6*(port-1)) und temporary active power limit (0xD007 + 6*(port-1)).
-	// Werden nur verwendet, wenn readOnly == false.
+	// --- DTU topology (needed to map Microinverter -> Port index for writes) ---
+	private static final int DTU_REGISTERED_MICROINVERTER_COUNT_REG = 0x3004; // FC04
+	private static final int DTU_SERIAL_LIST_BASE_REG = 0x502B;               // FC03, 3 words per microinverter
+	private static final int MAX_PORTS = 99;
+	private static final int MAX_MICROINVERTERS = 99;
+	private static final long TOPOLOGY_REFRESH_INTERVAL_MS = 30_000L;
+
+	// Values are read via Modbus tasks; we access them via reflection to stay compatible across OpenEMS versions.
+	private UnsignedWordElement dtuRegisteredMicroinverterCount;
+	// Serial list as 3-word element -> direct String per MI (no per-word channels)
+	private final ThreeWordHexRegisterElement[] dtuSerialListSerials = new ThreeWordHexRegisterElement[MAX_MICROINVERTERS];
+
+	// --- Per-Port write elements (Port == DC input) ---
+	private SignedWordElement[] portOnOffByPort = new SignedWordElement[MAX_PORTS];
+	private SignedWordElement[] portTempLimitActivePowerByPort = new SignedWordElement[MAX_PORTS];
+
+	// Current selected write port for THIS component (derived from DTU topology).
+	private int selectedWritePort = 1;
+	private long lastTopologyRefreshMs = 0;
+	private String lastTopologySignature = null;
+
+	// Active write pointers (existing write logic uses THESE)
 	private SignedWordElement portOnOff;
 	private SignedWordElement portTempLimitActivePower;
 
-	// Zuletzt auf den Bus geschriebene Werte, um unnötige Schreibvorgänge zu vermeiden.
+	// Last written value (avoid redundant writes)
 	private Boolean lastWrittenPortOn = null;
 
 	public PvInverterHoymilesHMSHMTImpl() {
@@ -178,11 +203,9 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		// Konfigurierte Phase ins Channel-Model schreiben
 		this.channel(PvInverterHoymilesHMSHMT.ChannelId.CONFIGURED_PHASE) //
 				.setNextValue(config.phase().name());
-		
+
 		this.updateStaticPowerLimitsFromModel();
-
 	}
-
 
 	@Deactivate
 	protected void deactivate() {
@@ -191,7 +214,6 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
 	@Override
 	public void handleEvent(Event event) {
-		// React only on cycle write events
 		if (!TOPIC_CYCLE_EXECUTE_WRITE.equals(event.getTopic())) {
 			return;
 		}
@@ -200,29 +222,34 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 			return;
 		}
 
-		//mrdomek "enabled=0" does not stop DS activation; we explicitly stop all runtime logic here.
 		if (!this.isEnabled()) {
 			return;
 		}
 
+		// Step 1: update DTU topology -> selects correct write-port for this microinverter
+		this.updateWritePortFromDtuTopologyIfDue();
+
+
+		// Update derived meta values and configured limits
 		this.updateMetaAndLimits();
 
-		final Integer pTotal = this.updateMeterPowersAndGetTotalPowerW();
-		if (pTotal == null) {
-			return;
-		}
+		// Meter/Power aggregation (kept as own method for clarity)
+		final int totalPowerW = this.updateMeterPowersAndGetTotalPowerW();
 
-		this.updateStatusAndUtilization(pTotal);
+		// Status + utilization based on current measurements
+		this.updateStatusAndUtilization(totalPowerW);
+
+		// Apply control only if allowed
+		if (!this.config.readOnly()) {
+			this.applyActivePowerLimitFromChannel();
+		}
 	}
-	
+
 	private void updateMetaAndLimits() {
 		//mrdomek Serial is 3x uint16 words (hex); convert to string each cycle, independent of power validity.
 		this.updateMi1SerialFromWords();
 
-		// Aktive Leistungsbegrenzung anwenden, falls nicht im Read-Only-Modus
-		if (!this.config.readOnly()) {
-			this.applyActivePowerLimitFromChannel();
-		}
+		//mrdomek Why: power-limit write is handled once per cycle in handleEvent(); avoid duplicate scheduling here.
 	}
 
 	private Integer updateMeterPowersAndGetTotalPowerW() {
@@ -463,7 +490,6 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 				});
 	}
 
-
 	private static int[] splitPowerByPhase(boolean threePhaseDevice,
 			PvInverterHoymilesHMSHMT.Phase phase, int totalPower) {
 
@@ -603,7 +629,6 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_WARNING).setNextValue(warning);
 	}
 
-
 	private int readIntChannelOrDefault(PvInverterHoymilesHMSHMT.ChannelId channelId, int defaultValue) {
 		Optional<?> opt = this.channel(channelId).value().asOptional();
 		if (!opt.isPresent() || !(opt.get() instanceof Number)) {
@@ -616,28 +641,27 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 			int alarm6) {
 		return HoymilesMi1StateLogic.interpretHoymilesStatus(totalPower, rawStatusCode, alarm1, alarm2, alarm3, alarm4, alarm5, alarm6);
 	}
-	
+
 	private void updateStaticPowerLimitsFromModel() {
-	    if (this.config == null) {
-	        return;
-	    }
-	    final DeviceModel model = this.config.deviceModel();
-	    if (model == null) {
-	        return;
-	    }
+		if (this.config == null) {
+			return;
+		}
+		final DeviceModel model = this.config.deviceModel();
+		if (model == null) {
+			return;
+		}
 
-	    final int pMaxW = model.getMaxTotalPowerW();
-	    final int sMaxVa = model.getMaxApparentPowerVa();
+		final int pMaxW = model.getMaxTotalPowerW();
+		final int sMaxVa = model.getMaxApparentPowerVa();
 
-	    // MaxActivePower (W) – capability for OpenEMS algorithms
-	    this.channel(io.openems.edge.pvinverter.api.ManagedSymmetricPvInverter.ChannelId.MAX_ACTIVE_POWER)
-	            .setNextValue(Integer.valueOf(pMaxW));
+		// MaxActivePower (W) – capability for OpenEMS algorithms
+		this.channel(io.openems.edge.pvinverter.api.ManagedSymmetricPvInverter.ChannelId.MAX_ACTIVE_POWER)
+				.setNextValue(Integer.valueOf(pMaxW));
 
-	    // MaxApparentPower (VA) – required for limitation algorithms (analysis report)
-	    this.channel(io.openems.edge.pvinverter.api.ManagedSymmetricPvInverter.ChannelId.MAX_APPARENT_POWER)
-	            .setNextValue(Integer.valueOf(sMaxVa));
+		// MaxApparentPower (VA) – required for limitation algorithms (analysis report)
+		this.channel(io.openems.edge.pvinverter.api.ManagedSymmetricPvInverter.ChannelId.MAX_APPARENT_POWER)
+				.setNextValue(Integer.valueOf(sMaxVa));
 	}
-
 
 	private void updateAlarmSummary() {
 		// Read all relevant 16-bit words (treat missing/null as 0)
@@ -688,6 +712,10 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_SERIAL).setNextValue(sn);
 	}
 
+
+
+
+
 	private void setPortOnOff(boolean on) {
 		if (this.portOnOff == null) {
 			return;
@@ -702,6 +730,173 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		this.lastWrittenPortOn = Boolean.valueOf(on);
 	}
 
+
+	private void updateWritePortFromDtuTopologyIfDue() {
+		// Only log/compute occasionally; tasks are LOW prio and values may update slowly.
+		final long now = System.currentTimeMillis();
+		if (now - this.lastTopologyRefreshMs < TOPOLOGY_REFRESH_INTERVAL_MS) {
+			return;
+		}
+		this.lastTopologyRefreshMs = now;
+
+		if (this.config == null) {
+			return;
+		}
+
+		// Read inverter count from mapped channel (FC04 @ 0x3004)
+		final Integer countU16 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.DTU_REGISTERED_MICROINVERTERS)
+				.value().asOptional()
+				.map(v -> ((Number) v).intValue())
+				.orElse(null);
+
+		if (countU16 == null || countU16.intValue() <= 0) {
+			if (this.config.debugMode()) {
+				log.info("PowerLimit: DTU inverter-count not available yet (0x3004) -> skipping mapping update");
+			}
+			return;
+		}
+
+		final int inverterCount = Math.min(countU16.intValue(), MAX_MICROINVERTERS);
+
+		if (this.microinverterNumber < 1 || this.microinverterNumber > inverterCount) {
+			log.warn(
+					"PowerLimit: Config microinverterNumber={} out of range (DTU reports {} inverters) -> mapping unchanged",
+					this.microinverterNumber, inverterCount);
+			return;
+		}
+
+		/*
+		 * IMPORTANT:
+		 * We intentionally read only MI1..MI(microinverterNumber) serials (not all),
+		 * to keep FC03 requests small. Mapping must only depend on those prefixes.
+		 */
+		final int neededMis = this.microinverterNumber;
+
+		// Signature detects relevant topology/model changes for MI1..neededMis
+		final StringBuilder sig = new StringBuilder(8 * neededMis);
+		sig.append(inverterCount).append(':');
+
+		final int[] prefixes = new int[neededMis];
+
+		for (int mi = 1; mi <= neededMis; mi++) {
+			final String serialHex = this.channel(PvInverterHoymilesHMSHMT.ChannelId
+					.valueOf("DTU__CONNECTED_MI" + mi + "_SERIAL"))
+					.value().asOptional()
+					.map(v -> String.valueOf(v))
+					.orElse(null);
+
+			if (serialHex == null || serialHex.length() < 4) {
+				if (this.config.debugMode()) {
+					log.info("PowerLimit: DTU serial not available yet (MI{} SERIAL) -> mapping unchanged", mi);
+				}
+				return;
+			}
+
+			final String prefixHex = serialHex.substring(0, 4);
+			final int prefixU16;
+			try {
+				prefixU16 = Integer.parseInt(prefixHex, 16) & 0xFFFF;
+			} catch (Exception e) {
+				log.warn("PowerLimit: Invalid serial prefix [{}] for MI{} -> mapping unchanged", prefixHex, mi);
+				return;
+			}
+
+			prefixes[mi - 1] = prefixU16;
+
+			if (mi > 1) {
+				sig.append(',');
+			}
+			sig.append(String.format("%04X", prefixU16));
+		}
+
+		final String signature = sig.toString();
+
+		// Compute start-port index for this.microinverterNumber by summing input-channels of previous MIs
+		int portIndex = 1;
+		for (int mi = 1; mi < this.microinverterNumber; mi++) {
+			final int prefixU16 = prefixes[mi - 1];
+
+			final DeviceModel model = DeviceModel.findBySerialWord0(prefixU16);
+			if (model == null) {
+				log.warn("PowerLimit: Unknown DeviceModel prefix 0x{} for MI{} -> mapping unchanged",
+						String.format("%04X", prefixU16), mi);
+				return;
+			}
+
+			portIndex += model.getInputChannels();
+		}
+
+		if (portIndex < 1 || portIndex > MAX_PORTS) {
+			log.warn("PowerLimit: Computed write-port {} out of range (1..{}) -> mapping unchanged", portIndex, MAX_PORTS);
+			return;
+		}
+
+		// Hoymiles write behavior: only first port of the MI is effective -> use computed start-port as write port
+		final int newWritePort = portIndex;
+
+		final boolean signatureChanged = (this.lastTopologySignature == null) || !this.lastTopologySignature.equals(signature);
+		final boolean portChanged = (this.selectedWritePort != newWritePort);
+
+		if (!signatureChanged && !portChanged) {
+			if (this.config.debugMode()) {
+				log.info("PowerLimit: DTU topology unchanged -> writePort stays at {}", this.selectedWritePort);
+			}
+			return;
+		}
+
+		this.lastTopologySignature = signature;
+
+		this.selectedWritePort = newWritePort;
+		this.portOnOff = this.portOnOffByPort[newWritePort - 1];
+		this.portTempLimitActivePower = this.portTempLimitActivePowerByPort[newWritePort - 1];
+
+		// Force next write to re-assert ON/OFF on the new port (existing logic relies on lastWrittenPortOn)
+		this.lastWrittenPortOn = null;
+
+		log.info("PowerLimit: DTU topology mapped microinverterNumber={} -> writePort={} (signatureChanged={})",
+				this.microinverterNumber, this.selectedWritePort, signatureChanged);
+	}
+
+	//mrdomek Modbus FC03/FC04 common max is 125 registers; keep margin for device quirks.
+	private static final int DTU_FC3_MAX_WORDS = 120;
+	//mrdomek Hoymiles serial list is 3x uint16 words per microinverter.
+	private static final int DTU_SERIAL_WORDS_PER_MI = 3;
+
+
+	private void addDtuSerialListReadTasksLimited(List<Task> tasks, Priority priority, int wordsToRead) {
+		final int cappedWords = Math.max(0,
+				Math.min(wordsToRead, MAX_MICROINVERTERS * DTU_SERIAL_WORDS_PER_MI));
+		if (cappedWords == 0) {
+			if (this.config != null && this.config.debugMode()) {
+				log.info("DTU topology: serial list wordsToRead=0 -> skipping FC03 serial list reads");
+			}
+			return;
+		}
+
+		// 3 words per MI serial -> number of serial items we must read
+		final int itemsToRead = cappedWords / DTU_SERIAL_WORDS_PER_MI;
+
+		// Chunking: FC03 typically supports up to 125 registers; we keep a margin (DTU_FC3_MAX_WORDS)
+		final int maxItemsPerChunk = Math.max(1, DTU_FC3_MAX_WORDS / DTU_SERIAL_WORDS_PER_MI);
+		final int chunks = (itemsToRead + maxItemsPerChunk - 1) / maxItemsPerChunk;
+
+		if (this.config != null && this.config.debugMode()) {
+			log.info("DTU topology: scheduling serial list FC03 reads words={} items={} chunks={} (maxItemsPerChunk={})",
+					cappedWords, itemsToRead, chunks, maxItemsPerChunk);
+		}
+
+		for (int itemOffset = 0; itemOffset < itemsToRead; itemOffset += maxItemsPerChunk) {
+			final int lenItems = Math.min(maxItemsPerChunk, itemsToRead - itemOffset);
+
+			final ThreeWordHexRegisterElement[] slice = Arrays.copyOfRange(
+					this.dtuSerialListSerials, itemOffset, itemOffset + lenItems);
+
+			final int startReg = DTU_SERIAL_LIST_BASE_REG + (itemOffset * DTU_SERIAL_WORDS_PER_MI);
+			tasks.add(new FC3ReadRegistersTask(startReg, priority, slice));
+		}
+	}
+
+
 	@Override
 	protected ModbusProtocol defineModbusProtocol() {
 		/*
@@ -711,13 +906,6 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		 * block size: 0x60 (96 words) per microinverter
 		 */
 		final int base = 0x38E0 + (this.microinverterNumber - 1) * MI_REGISTER_BLOCK_SIZE;
-
-		/*
-		 * Per-port write register block:
-		 * base: 0xD006
-		 * step: 0x0006 per microinverter
-		 */
-		final int portBase = 0xD006 + (this.microinverterNumber - 1) * 0x0006;
 
 		// -----------------------------------------------------------------------------------------
 		// Serial + Energy
@@ -791,10 +979,35 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		final SignedWordElement alarm6 = new SignedWordElement(base + 0x2D);
 
 		// -----------------------------------------------------------------------------------------
-		// Writes (Port ON/OFF + temporary active power limit in %)
+		// DTU topology (count + serial list; required for Microinverter -> Port mapping)
 		// -----------------------------------------------------------------------------------------
-		this.portOnOff = new SignedWordElement(portBase + 0x0000);
-		this.portTempLimitActivePower = new SignedWordElement(portBase + 0x0001);
+		this.dtuRegisteredMicroinverterCount = new UnsignedWordElement(DTU_REGISTERED_MICROINVERTER_COUNT_REG);
+
+		// 99 microinverters max, 3 words each -> 99 serial strings (12 hex chars each)
+		for (int mi = 1; mi <= MAX_MICROINVERTERS; mi++) {
+			final int index = mi - 1;
+			final int reg = DTU_SERIAL_LIST_BASE_REG + (index * DTU_SERIAL_WORDS_PER_MI);
+
+			final ThreeWordHexRegisterElement el = new ThreeWordHexRegisterElement(reg);
+			this.dtuSerialListSerials[index] = el;
+
+			//mrdomek Why: bind element to channel so OpenEMS stores the computed string value.
+			this.m(PvInverterHoymilesHMSHMT.ChannelId.valueOf("DTU__CONNECTED_MI" + mi + "_SERIAL"), el);
+		}
+		// -----------------------------------------------------------------------------------------
+		// Writes (Per-Port ON/OFF + temporary active power limit in %)
+		// We always define all ports (1..99). Effective write port is selected at runtime via DTU topology.
+		// -----------------------------------------------------------------------------------------
+		for (int port = 1; port <= MAX_PORTS; port++) {
+			final int addr = 0xD006 + (port - 1) * 0x0006;
+			this.portOnOffByPort[port - 1] = new SignedWordElement(addr + 0x0000);
+			this.portTempLimitActivePowerByPort[port - 1] = new SignedWordElement(addr + 0x0001);
+		}
+
+		// Default pointer: Port 1 (will be corrected by updateWritePortFromDtuTopologyIfDue())
+		this.selectedWritePort = 1;
+		this.portOnOff = this.portOnOffByPort[0];
+		this.portTempLimitActivePower = this.portTempLimitActivePowerByPort[0];
 
 		// -----------------------------------------------------------------------------------------
 		// Channel mappings (Read)
@@ -896,27 +1109,63 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT, this.portTempLimitActivePower);
 
 		// -----------------------------------------------------------------------------------------
+		// DTU topology channel mappings (Read)
+		// NOTE: registers are read via tasks below; without these mappings the channels stay UNDEFINED.
+		// -----------------------------------------------------------------------------------------
+
+		// FC04 @ 0x3004 (input register): number of registered microinverters
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.DTU_REGISTERED_MICROINVERTERS, this.dtuRegisteredMicroinverterCount);
+
+		// -----------------------------------------------------------------------------------------
 		// Protocol tasks (Read + Write)
 		// -----------------------------------------------------------------------------------------
-		return new ModbusProtocol(this,
+		final List<Task> tasks = new ArrayList<>();
 
-				new FC4ReadInputRegistersTask(base, Priority.HIGH,
-						serialW0, serialW1, serialW2,
-						totalProductionWh, todayProductionWh,
-						activePower, reactivePower, powerFactor,
-						vphA, vphB, vphC,
-						uab, ubc, uca,
-						iphA, iphB, iphC,
-						frequency, temperature,
-						pv1Voltage, pv1Current, pv1Power,
-						pv2Voltage, pv2Current, pv2Power,
-						pv3Voltage, pv3Current, pv3Power,
-						pv4Voltage, pv4Current, pv4Power,
-						pv5Voltage, pv5Current, pv5Power,
-						pv6Voltage, pv6Current, pv6Power,
-						status, alarm1, alarm2, alarm3, alarm4, alarm5, alarm6),
+		// Main MI data (fast)
+		tasks.add(new FC4ReadInputRegistersTask(base, Priority.HIGH,
+				serialW0, serialW1, serialW2,
+				totalProductionWh, todayProductionWh,
+				activePower, reactivePower, powerFactor,
+				vphA, vphB, vphC,
+				uab, ubc, uca,
+				iphA, iphB, iphC,
+				frequency, temperature,
+				pv1Voltage, pv1Current, pv1Power,
+				pv2Voltage, pv2Current, pv2Power,
+				pv3Voltage, pv3Current, pv3Power,
+				pv4Voltage, pv4Current, pv4Power,
+				pv5Voltage, pv5Current, pv5Power,
+				pv6Voltage, pv6Current, pv6Power,
+				status, alarm1, alarm2, alarm3, alarm4, alarm5, alarm6));
 
-				new FC16WriteRegistersTask(portBase, this.portOnOff, this.portTempLimitActivePower));
+		// DTU topology (slow)
+		//mrdomek Read inverter count with HIGH priority so mapping becomes available early after startup.
+		tasks.add(new FC4ReadInputRegistersTask(DTU_REGISTERED_MICROINVERTER_COUNT_REG, Priority.HIGH,
+				this.dtuRegisteredMicroinverterCount));
+
+		/*
+		 * Serial list: We only need prefixes up to the configured microinverterNumber
+		 * (for write-port mapping). Each MI is 3 words.
+		 *
+		 * This keeps reads minimal and avoids Modbus max-register limits without needing dynamic tasks.
+		 */
+		//mrdomek Why: Protocol task list is static; we cannot depend on runtime value of 0x3004 here.
+		//mrdomek Why: To guarantee that DTU__CONNECTED_MIxx_SERIAL channels can be populated for all registered devices,
+		//mrdomek      we read the whole DTU serial list (LOW priority, chunked).
+		final int serialWordsToRead = MAX_MICROINVERTERS * DTU_SERIAL_WORDS_PER_MI;
+		this.addDtuSerialListReadTasksLimited(tasks, Priority.LOW, serialWordsToRead);
+
+		// Writes (only if not readOnly)
+		if (!this.config.readOnly()) {
+			for (int port = 1; port <= MAX_PORTS; port++) {
+				final int addr = 0xD006 + (port - 1) * 0x0006;
+				tasks.add(new FC16WriteRegistersTask(addr,
+						this.portOnOffByPort[port - 1],
+						this.portTempLimitActivePowerByPort[port - 1]));
+			}
+		}
+
+		return new ModbusProtocol(this, tasks.toArray(new Task[0]));
 	}
 
 	@Override
