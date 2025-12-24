@@ -247,9 +247,6 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 	}
 
 	private void updateMetaAndLimits() {
-		//mrdomek Serial is 3x uint16 words (hex); convert to string each cycle, independent of power validity.
-		this.updateMi1SerialFromWords();
-
 		// Aktive Leistungsbegrenzung anwenden, falls nicht im Read-Only-Modus
 		if (!this.config.readOnly()) {
 			this.applyActivePowerLimitFromChannel();
@@ -694,28 +691,6 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 				.orElse(0);
 	}
 
-	private void updateMi1SerialFromWords() {
-		final Optional<?> w0Opt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_SERIAL_WORD_0).value().asOptional();
-		final Optional<?> w1Opt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_SERIAL_WORD_1).value().asOptional();
-		final Optional<?> w2Opt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_SERIAL_WORD_2).value().asOptional();
-
-		if (!w0Opt.isPresent() || !w1Opt.isPresent() || !w2Opt.isPresent()) {
-			return;
-		}
-		if (!(w0Opt.get() instanceof Number) || !(w1Opt.get() instanceof Number) || !(w2Opt.get() instanceof Number)) {
-			return;
-		}
-
-		final int w0 = ((Number) w0Opt.get()).intValue();
-		final int w1 = ((Number) w1Opt.get()).intValue();
-		final int w2 = ((Number) w2Opt.get()).intValue();
-
-		//mrdomek Serial is 3x uint16; mask avoids negative values from SignedWordElement.
-		final String sn = String.format("%04X%04X%04X", (w0 & 0xFFFF), (w1 & 0xFFFF), (w2 & 0xFFFF));
-
-		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_SERIAL).setNextValue(sn);
-	}
-
 
 
 	private void setPortOnOff(boolean on) {
@@ -1034,9 +1009,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		// -----------------------------------------------------------------------------------------
 		// Serial + Energy
 		// -----------------------------------------------------------------------------------------
-		final SignedWordElement serialW0 = new SignedWordElement(base + 0x00);
-		final SignedWordElement serialW1 = new SignedWordElement(base + 0x01);
-		final SignedWordElement serialW2 = new SignedWordElement(base + 0x02);
+		final ThreeWordHexRegisterElement mi1Serial = new ThreeWordHexRegisterElement(base + 0x00);
 
 		final UnsignedDoublewordElement totalProductionWh = new UnsignedDoublewordElement(base + 0x03);
 		final UnsignedDoublewordElement todayProductionWh = new UnsignedDoublewordElement(base + 0x05);
@@ -1137,9 +1110,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		// -----------------------------------------------------------------------------------------
 		// Channel mappings (Read)
 		// -----------------------------------------------------------------------------------------
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_SERIAL_WORD_0, serialW0);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_SERIAL_WORD_1, serialW1);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_SERIAL_WORD_2, serialW2);
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_SERIAL, mi1Serial);
 
 		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_TOTAL_PRODUCTION_WH, totalProductionWh);
 		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_TODAY_PRODUCTION_WH, todayProductionWh);
@@ -1248,7 +1219,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
 		// Main MI data (fast)
 		tasks.add(new FC4ReadInputRegistersTask(base, Priority.HIGH,
-				serialW0, serialW1, serialW2,
+				mi1Serial,
 				totalProductionWh, todayProductionWh,
 				activePower, reactivePower, powerFactor,
 				vphA, vphB, vphC,
@@ -1277,7 +1248,14 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		//mrdomek Why: Protocol task list is static; we cannot depend on runtime value of 0x3004 here.
 		//mrdomek Why: To guarantee that DTU__CONNECTED_MIxx_SERIAL channels can be populated for all registered devices,
 		//mrdomek      we read the whole DTU serial list (LOW priority, chunked).
-		final int serialWordsToRead = MAX_MICROINVERTERS * DTU_SERIAL_WORDS_PER_MI;
+		/*
+		 * Serial list: We only need prefixes up to the configured microinverterNumber (for write-port mapping).
+		 * Each MI is 3 words.
+		 *
+		 * This keeps reads minimal; remaining chunks are not even scheduled.
+		 */
+		final int miNeeded = Math.max(0, Math.min(this.microinverterNumber, MAX_MICROINVERTERS));
+		final int serialWordsToRead = miNeeded * DTU_SERIAL_WORDS_PER_MI;
 		this.addDtuSerialListReadTasksLimited(tasks, Priority.LOW, serialWordsToRead);
 
 		// Writes (only if not readOnly)
