@@ -123,6 +123,10 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 	private int selectedWritePort = 1;
 	private long lastTopologyRefreshMs = 0;
 	private String lastTopologySignature = null;
+	
+	//mrdomek Why: ensure we apply safe defaults only once per topology signature.
+	private String lastInitSignature = null;
+
 
 	// Active write pointers (existing write logic uses THESE)
 	private SignedWordElement portOnOff;
@@ -231,23 +235,16 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		// Step 1: update DTU topology -> selects correct write-port for this microinverter
 		this.updateWritePortFromDtuTopologyIfDue();
 
-		// Update derived meta values and configured limits
-		this.updateMetaAndLimits();
-
 		// Meter/Power aggregation (kept as own method for clarity)
-		final int totalPowerW = this.updateMeterPowersAndGetTotalPowerW();
+		final Integer totalPowerW = this.updateMeterPowersAndGetTotalPowerW();
+		if (totalPowerW == null) {
+			return;
+		}
 
 		// Status + utilization based on current measurements
-		this.updateStatusAndUtilization(totalPowerW);
+		this.updateStatusAndUtilization(totalPowerW.intValue());
 
 		// Apply control only if allowed
-		if (!this.config.readOnly()) {
-			this.applyActivePowerLimitFromChannel();
-		}
-	}
-
-	private void updateMetaAndLimits() {
-		// Aktive Leistungsbegrenzung anwenden, falls nicht im Read-Only-Modus
 		if (!this.config.readOnly()) {
 			this.applyActivePowerLimitFromChannel();
 		}
@@ -722,97 +719,107 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 			return;
 		}
 
-		final Integer countU16 = readU16FromElement(this.dtuRegisteredMicroinverterCount);
+		final Integer countU16 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.DTU_REGISTERED_MICROINVERTERS)
+				.value().asOptional()
+				.map(v -> ((Number) v).intValue() & 0xFFFF)
+				.orElse(null);
+
 		if (countU16 == null || countU16.intValue() <= 0) {
 			if (this.config != null && this.config.debugMode()) {
-				log.info("PowerLimit: DTU inverter-count not available yet (0x3004) -> skipping mapping update");
+				log.info("PowerLimit: DTU inverter-count channel not available yet (DTU_REGISTERED_MICROINVERTERS) -> skipping mapping update");
 			}
 			return;
 		}
 
 		final int inverterCount = Math.min(countU16.intValue(), MAX_MICROINVERTERS);
 
-		if (this.microinverterNumber < 1 || this.microinverterNumber > inverterCount) {
-			log.warn(
-					"PowerLimit: Config microinverterNumber={} out of range (DTU reports {} inverters) -> mapping unchanged",
-					this.microinverterNumber, inverterCount);
+		if (this.microinverterNumber < 1 || this.microinverterNumber > MAX_MICROINVERTERS) {
+			log.warn("PowerLimit: Config microinverterNumber={} out of range (1..{}) -> block writes",
+					this.microinverterNumber, MAX_MICROINVERTERS);
+			this.portOnOff = null;
+			this.portTempLimitActivePower = null;
 			return;
 		}
 
 		/*
-		 * IMPORTANT:
-		 * We intentionally only need MI1..MI(microinverterNumber) to compute the port offset.
+		 * We only need MI1..MI(microinverterNumber) to compute the global port offset.
+		 * The serial list reads are already limited accordingly (Patch 1).
 		 */
-		final int neededMis = this.microinverterNumber;
+		final List<String> serials = new ArrayList<>(this.microinverterNumber);
+		for (int mi = 1; mi <= this.microinverterNumber; mi++) {
+			final PvInverterHoymilesHMSHMT.ChannelId ch;
+			try {
+				ch = PvInverterHoymilesHMSHMT.ChannelId.valueOf("DTU__CONNECTED_MI" + mi + "_SERIAL");
+			} catch (IllegalArgumentException e) {
+				log.warn("PowerLimit: Missing ChannelId DTU__CONNECTED_MI{}_SERIAL -> block writes", mi);
+				this.portOnOff = null;
+				this.portTempLimitActivePower = null;
+				return;
+			}
 
-		// Signature: inverterCount + prefixes of MI1..neededMis
-		final StringBuilder sig = new StringBuilder(8 * neededMis);
-		sig.append(inverterCount).append(':');
-
-		final int[] prefixes = new int[neededMis];
-
-		for (int mi = 1; mi <= neededMis; mi++) {
-			final String serial = this.channel(PvInverterHoymilesHMSHMT.ChannelId
-					.valueOf("DTU__CONNECTED_MI" + mi + "_SERIAL"))
-					.value().asOptional()
+			final String serial = this.channel(ch).value().asOptional()
 					.map(v -> String.valueOf(v))
 					.orElse(null);
 
+			// Debug: show raw serial per MI to pinpoint where data becomes unavailable/invalid
+			if (this.config != null && this.config.debugMode()) {
+				log.info("PowerLimit: DTU serial MI{}='{}'", mi, serial);
+			}
+
 			if (serial == null || serial.length() < 4) {
 				if (this.config != null && this.config.debugMode()) {
-					log.info("PowerLimit: DTU serial not available yet (MI{}) -> mapping unchanged", mi);
+					log.info("PowerLimit: DTU serial not available yet (MI{}) -> keep previous mapping", mi);
 				}
-				return;
+				return; // keep previous mapping; do not change ports on partial data
 			}
 
-			final int prefixU16;
-			try {
-				prefixU16 = Integer.parseInt(serial.substring(0, 4), 16) & 0xFFFF;
-			} catch (Exception e) {
-				log.warn("PowerLimit: DTU serial prefix parse failed for MI{} serial='{}' -> mapping unchanged", mi, serial);
-				return;
+			serials.add(serial);
+		}
+
+		final HoymilesDtuTopology.Result r = HoymilesDtuTopology.buildFromSerials(inverterCount, this.microinverterNumber,
+				serials);
+
+		// Debug: dump computed topology table whenever signature/port changes
+		if (this.config != null && this.config.debugMode()) {
+			final boolean signatureChangedDbg = (this.lastTopologySignature == null)
+					|| !this.lastTopologySignature.equals(r.signature);
+			final boolean portChangedDbg = (this.selectedWritePort != r.selectedWritePort);
+
+			if (signatureChangedDbg || portChangedDbg) {
+				log.info("PowerLimit: DTU topology result (signatureChanged={}, portChanged={})\n{}",
+						signatureChangedDbg, portChangedDbg, r.debugSummary);
 			}
-
-			prefixes[mi - 1] = prefixU16;
-			sig.append(String.format("%04X", prefixU16)).append(',');
 		}
 
-		final String signature = sig.toString();
+		final boolean signatureChanged = (this.lastTopologySignature == null) || !this.lastTopologySignature.equals(r.signature);
 
-		// Compute start-port index for this.microinverterNumber by summing input-channels of previous MIs
-		int portIndex = 1;
-		for (int mi = 1; mi < this.microinverterNumber; mi++) {
-			final int prefixU16 = prefixes[mi - 1];
-
-			final DeviceModel model = DeviceModel.findBySerialWord0(prefixU16);
-			if (model == null) {
-				log.warn("PowerLimit: Unknown DeviceModel prefix 0x{} for MI{} -> mapping unchanged",
-						String.format("%04X", prefixU16), mi);
-				return;
-			}
-
-			portIndex += model.getInputChannels();
-		}
-
-		if (portIndex < 1 || portIndex > MAX_PORTS) {
-			log.warn("PowerLimit: Computed write-port {} out of range (1..{}) -> mapping unchanged", portIndex, MAX_PORTS);
-			return;
-		}
-
-		// Hoymiles write behavior: only first port of the MI is effective -> use computed start-port as write port
-		final int newWritePort = portIndex;
-
-		final boolean signatureChanged = (this.lastTopologySignature == null) || !this.lastTopologySignature.equals(signature);
-		final boolean portChanged = (this.selectedWritePort != newWritePort);
-
-		if (!signatureChanged && !portChanged) {
+		if (!signatureChanged && this.selectedWritePort == r.selectedWritePort && (this.portOnOff != null)
+				&& (this.portTempLimitActivePower != null)) {
 			if (this.config != null && this.config.debugMode()) {
 				log.info("PowerLimit: DTU topology unchanged -> writePort stays at {}", this.selectedWritePort);
 			}
 			return;
 		}
 
-		this.lastTopologySignature = signature;
+		this.lastTopologySignature = r.signature;
+
+		if (!r.ready) {
+			//mrdomek Why: fail-safe; if topology is unclear, block any writes to avoid accidental 100% output.
+			this.portOnOff = null;
+			this.portTempLimitActivePower = null;
+			log.warn("PowerLimit: DTU topology UNSAFE -> block writes. {}", r.debugSummary);
+			return;
+		}
+
+		final int newWritePort = r.selectedWritePort;
+
+		if (newWritePort < 1 || newWritePort > MAX_PORTS) {
+			this.portOnOff = null;
+			this.portTempLimitActivePower = null;
+			log.warn("PowerLimit: Computed writePort {} out of range (1..{}) -> block writes. {}", newWritePort, MAX_PORTS,
+					r.debugSummary);
+			return;
+		}
 
 		this.selectedWritePort = newWritePort;
 		this.portOnOff = this.portOnOffByPort[newWritePort - 1];
@@ -821,8 +828,43 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		// Force next write to re-assert ON/OFF on the new port (existing logic relies on lastWrittenPortOn)
 		this.lastWrittenPortOn = null;
 
-		log.info("PowerLimit: DTU topology mapped microinverterNumber={} -> writePort={} (signatureChanged={})",
-				this.microinverterNumber, this.selectedWritePort, signatureChanged);
+		/*
+		 * Apply safe defaults AFTER topology is READY:
+		 * - ON=1
+		 * - limitPercent = model generation minPercent (e.g. Gen3=2)
+		 * Only once per topology signature.
+		 */
+		//mrdomek Why: initialization must use the correct offset; never write before topology readiness.
+		if (this.config != null && !this.config.readOnly()) {
+			final String initSig = this.lastTopologySignature;
+			if (initSig != null && !initSig.equals(this.lastInitSignature)) {
+
+				int minPercent = 0;
+				final DeviceModel model = (this.config != null) ? this.config.deviceModel() : null;
+				if (model != null && model.getGeneration() != null) {
+					minPercent = model.getGeneration().getMinPercent();
+				}
+				if (minPercent < 0) {
+					minPercent = 0;
+				}
+				if (minPercent > 100) {
+					minPercent = 100;
+				}
+
+				// enforce ON + safe min%
+				this.setPortOnOff(true);
+				this.portTempLimitActivePower.setNextWriteValue(Short.valueOf((short) minPercent));
+
+				// explicit register log for Wireshark correlation
+				if (this.config != null && this.config.debugMode()) {
+					final int baseAddr = 0xD006 + (this.selectedWritePort - 1) * 0x0006;
+					log.info("PowerLimit INIT: topologyReady signature='{}' -> writePort={} baseReg={} (onOffReg={}, pctReg={}) values: on=1 pct={}",
+							initSig, this.selectedWritePort, baseAddr, baseAddr + 0, baseAddr + 1, minPercent);
+				}
+
+				this.lastInitSignature = initSig;
+			}
+		}
 	}
 
 	private static Integer readU16FromElement(SignedWordElement element) {
@@ -1102,10 +1144,11 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 			this.portTempLimitActivePowerByPort[port - 1] = new SignedWordElement(addr + 0x0001);
 		}
 
-		// Default pointer: Port 1 (will be corrected by updateWritePortFromDtuTopologyIfDue())
-		this.selectedWritePort = 1;
-		this.portOnOff = this.portOnOffByPort[0];
-		this.portTempLimitActivePower = this.portTempLimitActivePowerByPort[0];
+		// Default pointer: BLOCK writes until DTU topology is READY.
+		//mrdomek Why: must not write to Port 1 by default; wait for topology-derived mapping first.
+		this.selectedWritePort = 0;
+		this.portOnOff = null;
+		this.portTempLimitActivePower = null;
 
 		// -----------------------------------------------------------------------------------------
 		// Channel mappings (Read)
@@ -1198,11 +1241,17 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM5_CODE, alarm5);
 		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM6_CODE, alarm6);
 
+
 		/*
 		 * "Last sent" percent limit:
-		 * this is a UI/debug mirror; the DTU does not provide a readback register here.
+		 * This is a UI/debug mirror; the DTU does not provide a readback register here.
+		 *
+		 * IMPORTANT:
+		 * Do NOT map this channel to any Modbus Element, because the effective write element changes at runtime
+		 * (selectedWritePort). The UI channel is updated via Actions.setLimitPercentUi() in applyActivePowerLimitFromChannel().
 		 */
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT, this.portTempLimitActivePower);
+		//mrdomek Why: Mapping to a fixed element would show the wrong port after topology-based port switching.
+		// intentionally no this.m(...) mapping here
 
 		// -----------------------------------------------------------------------------------------
 		// DTU topology channel mappings (Read)
@@ -1292,13 +1341,16 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 			return "";
 		}
 
-		StringBuilder sb = new StringBuilder();
+		final StringBuilder sb = new StringBuilder();
 
-		sb.append("MI#").append(this.microinverterNumber);
+		// Selected MI (config) - this component represents exactly ONE MI via microinverterNumber
+		final int selMi = this.microinverterNumber;
 
-		DeviceModel model = (this.config != null) ? this.config.deviceModel() : null;
-		PvInverterHoymilesHMSHMT.Phase phase = (this.config != null) ? this.config.phase() : null;
-		boolean threePhaseDevice = model != null && model.isThreePhase();
+		sb.append("MI#").append(selMi);
+
+		final DeviceModel model = (this.config != null) ? this.config.deviceModel() : null;
+		final PvInverterHoymilesHMSHMT.Phase phase = (this.config != null) ? this.config.phase() : null;
+		final boolean threePhaseDevice = model != null && model.isThreePhase();
 
 		Integer maxTotalPowerW = null;
 		Integer minPercent = null;
@@ -1315,35 +1367,62 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		sb.append("|phase=").append(phase != null ? phase.name() : "-");
 		sb.append("|maxP=").append(maxTotalPowerW != null ? maxTotalPowerW : "-").append("W");
 
-		String pAcW = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ACTIVE_POWER_W)
+		/*
+		 * IMPORTANT:
+		 * Channels are historically named MI1_* due to the vendor documentation wording,
+		 * but semantically they represent the SELECTED MI of this component (selMi).
+		 */
+		final String pAcW = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ACTIVE_POWER_W)
 				.value().asString();
-		String limitW = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_W)
+		final String limitW = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_W)
 				.value().asString();
-		String limitPercentCh = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
+		final String limitPercentCh = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
 				.value().asString();
 
-		sb.append("|P_ac=").append(pAcW);
-		sb.append("|LimitW_ch=").append(limitW);
-		sb.append("|Limit%_ch=").append(limitPercentCh);
+		sb.append("|sel.P_ac=").append(pAcW);
+		sb.append("|sel.LimitW_ch=").append(limitW);
+		sb.append("|sel.Limit%_ch=").append(limitPercentCh);
 
-		Integer lastEffW = this.powerLimitHandler.getLastTargetLimitW();
-		Short lastPct = this.powerLimitHandler.getLastWrittenLimitPercent();
+		final Integer lastEffW = this.powerLimitHandler.getLastTargetLimitW();
+		final Short lastPct = this.powerLimitHandler.getLastWrittenLimitPercent();
 
 		sb.append("|lastEffW=").append(lastEffW != null ? lastEffW : "-");
 		sb.append("|lastPct=").append(lastPct != null ? lastPct : "-");
 		sb.append("|portOn=").append(
 				this.lastWrittenPortOn != null ? (this.lastWrittenPortOn.booleanValue() ? "1" : "0") : "-");
 
-		String health = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_HEALTH_STATE)
+		final String health = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_HEALTH_STATE)
 				.value().asString();
-		String interpretedStatus = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_INTERPRETED_STATUS)
+		final String interpretedStatus = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_INTERPRETED_STATUS)
 				.value().asString();
-		String alarmSummary = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM_SUMMARY)
+		final String alarmSummary = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM_SUMMARY)
 				.value().asString();
 
-		sb.append("|health=").append(health);
-		sb.append("|status=").append(interpretedStatus);
-		sb.append("|alarms=").append(alarmSummary);
+		sb.append("|sel.health=").append(health);
+		sb.append("|sel.status=").append(interpretedStatus);
+		sb.append("|sel.alarms=").append(alarmSummary);
+
+		// Optional but very useful for offset debugging: show DTU serial list entries around selected MI
+		try {
+			final String dtuCnt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.DTU_REGISTERED_MICROINVERTERS)
+					.value().asString();
+			sb.append("|dtu.count=").append(dtuCnt);
+
+			final String dtuSelSerial = this.channel(PvInverterHoymilesHMSHMT.ChannelId.valueOf(
+					"DTU__CONNECTED_MI" + selMi + "_SERIAL")).value().asString();
+			sb.append("|dtu.selSerial=").append(dtuSelSerial);
+
+			// show MI1/MI2 serials for quick sanity when only 2 are registered
+			final String dtuMi1 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.DTU__CONNECTED_MI1_SERIAL)
+					.value().asString();
+			sb.append("|dtu.mi1=").append(dtuMi1);
+
+			final String dtuMi2 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.DTU__CONNECTED_MI2_SERIAL)
+					.value().asString();
+			sb.append("|dtu.mi2=").append(dtuMi2);
+		} catch (Exception e) {
+			// ignore; debugLog must never break component activation
+		}
 
 		return sb.toString();
 	}

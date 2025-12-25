@@ -4,8 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Step 1 helper: build DTU topology table (MI -> inputChannels -> global port offsets)
- * from DTU data (inverterCount + serial-word0 prefix list).
+ * Builds DTU topology table (MI -> DeviceModel -> inputChannels -> global port offsets)
+ * from DTU data (inverterCount + serial strings).
  */
 //mrdomek Why: keep parsing/math isolated and testable; the Impl just feeds raw values and logs the result.
 public final class HoymilesDtuTopology {
@@ -14,30 +14,37 @@ public final class HoymilesDtuTopology {
 
 	public static final class Entry {
 		public final int miIndex; // 1-based
-		public final int serialWord0U16; // 0..65535
+		public final String serialHex12; // may be null
+		public final int prefixU16; // 0..65535, -1 if invalid
 		public final DeviceModel modelOrNull;
-		public final int inputChannels; // derived
+		public final int inputChannels; // derived; 0 if unknown
 		public final int globalPortStart; // 1-based
-		public final int globalPortEnd; // inclusive
+		public final int globalPortEnd; // inclusive; may be < start if inputChannels==0
 
-		private Entry(int miIndex, int serialWord0U16, DeviceModel modelOrNull, int inputChannels, int globalPortStart) {
+		private Entry(int miIndex, String serialHex12, int prefixU16, DeviceModel modelOrNull, int inputChannels,
+				int globalPortStart) {
 			this.miIndex = miIndex;
-			this.serialWord0U16 = serialWord0U16;
+			this.serialHex12 = serialHex12;
+			this.prefixU16 = prefixU16;
 			this.modelOrNull = modelOrNull;
 			this.inputChannels = inputChannels;
 			this.globalPortStart = globalPortStart;
-			this.globalPortEnd = globalPortStart + inputChannels - 1;
+			this.globalPortEnd = (inputChannels <= 0) ? (globalPortStart - 1) : (globalPortStart + inputChannels - 1);
 		}
 
 		public String prefixHex4() {
-			return String.format("0x%04X", this.serialWord0U16 & 0xFFFF);
+			if (this.prefixU16 < 0) {
+				return "n/a";
+			}
+			return String.format("0x%04X", this.prefixU16 & 0xFFFF);
 		}
 
 		@Override
 		public String toString() {
 			final String model = this.modelOrNull == null ? "UNKNOWN" : this.modelOrNull.toString();
-			return "MI" + this.miIndex + " prefix=" + this.prefixHex4() + " model=" + model + " inputs="
-					+ this.inputChannels + " ports=[" + this.globalPortStart + ".." + this.globalPortEnd + "]";
+			return "MI" + this.miIndex + " serial=" + (this.serialHex12 == null ? "null" : this.serialHex12)
+					+ " prefix=" + this.prefixHex4() + " model=" + model + " inputs=" + this.inputChannels
+					+ " ports=[" + this.globalPortStart + ".." + this.globalPortEnd + "]";
 		}
 	}
 
@@ -48,17 +55,19 @@ public final class HoymilesDtuTopology {
 		public final int totalPorts;
 		public final int selectedMiIndex;
 		public final int selectedWritePort; // global port index for control (start-port of selected MI)
-		public final String signature; // stable signature for change detection (prefix list only, built entries only)
+		public final boolean ready;
+		public final String signature; // stable signature for change detection (reported count + needed prefixes)
 		public final String debugSummary;
 
 		private Result(int inverterCountReported, int inverterCountBuilt, List<Entry> entries, int totalPorts,
-				int selectedMiIndex, int selectedWritePort, String signature, String debugSummary) {
+				int selectedMiIndex, int selectedWritePort, boolean ready, String signature, String debugSummary) {
 			this.inverterCountReported = inverterCountReported;
 			this.inverterCountBuilt = inverterCountBuilt;
 			this.entries = entries;
 			this.totalPorts = totalPorts;
 			this.selectedMiIndex = selectedMiIndex;
 			this.selectedWritePort = selectedWritePort;
+			this.ready = ready;
 			this.signature = signature;
 			this.debugSummary = debugSummary;
 		}
@@ -70,71 +79,109 @@ public final class HoymilesDtuTopology {
 	/**
 	 * Builds DTU topology based on:
 	 * - inverterCount (how many microinverters are registered)
-	 * - serialWord0 list (one uint16 per microinverter, first 4 hex digits of serial)
+	 * - serialHex12 list (12 hex chars per microinverter; we only require the first 4 chars)
 	 *
 	 * @param inverterCount count from DTU (clamped 0..99)
 	 * @param selectedMiIndex config.microinverterNumber (1..99)
-	 * @param serialWord0U16List list of word0 prefixes; size defines how many MIs are actually available
+	 * @param serialHex12List list of serial strings for MI1..MI(n); size defines how many MIs are available
 	 */
-	public static Result build(int inverterCount, int selectedMiIndex, int[] serialWord0U16List) {
+	public static Result buildFromSerials(int inverterCount, int selectedMiIndex, List<String> serialHex12List) {
 		final int reported = clamp(inverterCount, 0, MAX_PORTS);
-		final int selected = clamp(selectedMiIndex, 1, MAX_PORTS);
 
-		final int available = serialWord0U16List == null ? 0 : serialWord0U16List.length;
-		final int built = Math.min(reported, available);
+		final int sel = clamp(selectedMiIndex, 1, MAX_PORTS);
 
-		final List<Entry> entries = new ArrayList<>(built);
+		// We only need MI1..MI(sel) to compute the selected write port.
+		final int needed = Math.min(sel, serialHex12List == null ? 0 : serialHex12List.size());
 
-		int nextPortStart = 1;
+		final List<Entry> entries = new ArrayList<>(needed);
 
-		final StringBuilder sig = new StringBuilder(256);
-		sig.append(reported).append(':').append(built).append(':');
+		final StringBuilder sig = new StringBuilder(8 * (needed + 1));
+		sig.append(reported).append(':');
 
-		for (int mi = 1; mi <= built; mi++) {
-			final int word0 = (serialWord0U16List[mi - 1] & 0xFFFF);
+		int portStart = 1;
+		int totalPorts = 0;
 
-			if (mi > 1) {
-				sig.append(',');
+		boolean ready = true;
+		int selectedPort = 1;
+
+		for (int mi = 1; mi <= needed; mi++) {
+			final String serial = serialHex12List.get(mi - 1);
+
+			final int prefixU16 = parsePrefixU16(serial);
+			final DeviceModel model = (prefixU16 < 0) ? null : DeviceModel.findBySerialWord0(prefixU16);
+			final int inputs = (model == null) ? 0 : model.getInputChannels();
+
+			sig.append(prefixU16 < 0 ? "????" : String.format("%04X", prefixU16 & 0xFFFF)).append(',');
+
+			entries.add(new Entry(mi, serial, prefixU16, model, inputs, portStart));
+
+			if (inputs <= 0) {
+				//mrdomek Why: without a known model we cannot compute offsets safely.
+				ready = false;
+			} else {
+				portStart += inputs;
+				totalPorts += inputs;
 			}
-			sig.append(String.format("%04X", word0));
-
-			final DeviceModel model = DeviceModel.findBySerialWord0(word0);
-			final int inputs = model != null ? model.getInputChannels() : 1; // fail-safe minimal assumption
-
-			entries.add(new Entry(mi, word0, model, inputs, nextPortStart));
-			nextPortStart += inputs;
 		}
 
-		final int totalPorts = Math.max(0, nextPortStart - 1);
-
-		int selectedWritePort = 1;
-		for (Entry e : entries) {
-			if (e.miIndex == selected) {
-				selectedWritePort = e.globalPortStart; // control port == first port of this MI
-				break;
-			}
+		// If DTU reports fewer inverters than selected, offset is unsafe.
+		if (reported < sel) {
+			ready = false;
 		}
 
-		final String debug = buildDebug(reported, built, selected, selectedWritePort, totalPorts, entries, available);
-		return new Result(reported, built, entries, totalPorts, selected, selectedWritePort, sig.toString(), debug);
+		// If we couldn't build all needed entries (e.g. missing serials), offset is unsafe.
+		if (needed < sel) {
+			ready = false;
+		}
+
+		// Selected write port is the start-port of the selected MI (if we have it)
+		if (sel >= 1 && sel <= entries.size()) {
+			selectedPort = entries.get(sel - 1).globalPortStart;
+		} else {
+			selectedPort = 1;
+		}
+
+		// Total port count sanity
+		if (totalPorts > MAX_PORTS) {
+			ready = false;
+		}
+
+		final String signature = sig.toString();
+		final String debugSummary = buildDebugSummary(reported, sel, selectedPort, totalPorts, entries, signature, ready);
+
+		return new Result(reported, needed, entries, totalPorts, sel, selectedPort, ready, signature, debugSummary);
 	}
 
-	private static String buildDebug(int reported, int built, int selectedMi, int selectedPort, int totalPorts,
-			List<Entry> entries, int available) {
-		final StringBuilder sb = new StringBuilder(1024);
-
-		sb.append("DTU Topology Step1: inverterCountReported=").append(reported)
-				.append(" inverterCountBuilt=").append(built)
-				.append(" serialPrefixesAvailable=").append(available)
-				.append(" selectedMI=").append(selectedMi)
+	private static String buildDebugSummary(int reported, int selectedMiIndex, int selectedPort, int totalPorts,
+			List<Entry> entries, String signature, boolean ready) {
+		final StringBuilder sb = new StringBuilder(512);
+		sb.append("DTU topology: reportedInverters=").append(reported)
+				.append(" builtEntries=").append(entries.size())
+				.append(" selectedMi=").append(selectedMiIndex)
 				.append(" selectedWritePort=").append(selectedPort)
 				.append(" totalPorts=").append(totalPorts)
-				.append(" (max=").append(MAX_PORTS).append(")\n");
+				.append(" ready=").append(ready)
+				.append(" signature=").append(signature)
+				.append('\n');
 
 		for (Entry e : entries) {
 			sb.append(" - ").append(e.toString()).append('\n');
 		}
 		return sb.toString();
+	}
+
+	private static int parsePrefixU16(String serialHex12) {
+		if (serialHex12 == null) {
+			return -1;
+		}
+		if (serialHex12.length() < 4) {
+			return -1;
+		}
+		try {
+			return Integer.parseInt(serialHex12.substring(0, 4), 16) & 0xFFFF;
+		} catch (Exception e) {
+			return -1;
+		}
 	}
 
 	private static int clamp(int v, int min, int max) {
