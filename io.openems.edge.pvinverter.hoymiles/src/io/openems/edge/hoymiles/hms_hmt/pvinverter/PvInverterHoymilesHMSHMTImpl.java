@@ -88,14 +88,9 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 	 */
 	private static final int MI_REGISTER_BLOCK_SIZE = 0x60; // 96 registers per inverter block
 
-	/**
-	 * Hysterese für Leistungs-Sollwert in W.
-	 */
-	private static final int LIMIT_HYSTERESIS_W = 100;
-
 	//mrdomek Keep power-limit logic out of the component to stay readable.
 	private final HoymilesPowerLimitHandler powerLimitHandler =
-			new HoymilesPowerLimitHandler(LIMIT_HYSTERESIS_W, 5_000L);
+			new HoymilesPowerLimitHandler(5_000L);
 
 	// Selected microinverter number (1..99); used to shift the read register block.
 	private int microinverterNumber = 1;
@@ -407,53 +402,22 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		// Mirror for UI/debug
 		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_W).setNextValue(targetLimitW);
 
-		/*
-		 * Measurements for closed-loop regulation.
-		 */
-		final int actualAcPowerW = readIntChannelOrDefault(PvInverterHoymilesHMSHMT.ChannelId.MI1_ACTIVE_POWER_W, 0);
 
-		int actualDcPowerW = 0;
-		int dcPeakTotalW = 0;
+		final int mpptTotal = (model != null) ? model.getMpptTotal() : 1;
+		final int mpptActive = this.getActiveMpptCountFromConfig(model);
 
-		final int inputs = (model != null) ? Math.max(0, Math.min(model.getInputChannels(), 6)) : 0;
-		for (int i = 1; i <= inputs; i++) {
-			switch (i) {
-			case 1:
-				actualDcPowerW += readIntChannelOrDefault(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV1_POWER_W, 0);
-				dcPeakTotalW += (this.config != null) ? this.config.pv1ModulePeakPowerW() : 0;
-				break;
-			case 2:
-				actualDcPowerW += readIntChannelOrDefault(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV2_POWER_W, 0);
-				dcPeakTotalW += (this.config != null) ? this.config.pv2ModulePeakPowerW() : 0;
-				break;
-			case 3:
-				actualDcPowerW += readIntChannelOrDefault(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV3_POWER_W, 0);
-				dcPeakTotalW += (this.config != null) ? this.config.pv3ModulePeakPowerW() : 0;
-				break;
-			case 4:
-				actualDcPowerW += readIntChannelOrDefault(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV4_POWER_W, 0);
-				dcPeakTotalW += (this.config != null) ? this.config.pv4ModulePeakPowerW() : 0;
-				break;
-			case 5:
-				actualDcPowerW += readIntChannelOrDefault(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV5_POWER_W, 0);
-				dcPeakTotalW += (this.config != null) ? this.config.pv5ModulePeakPowerW() : 0;
-				break;
-			case 6:
-				actualDcPowerW += readIntChannelOrDefault(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV6_POWER_W, 0);
-				dcPeakTotalW += (this.config != null) ? this.config.pv6ModulePeakPowerW() : 0;
-				break;
-			default:
-				break;
-			}
-		}
+		// effectiveMaxW = maxTotalPowerW * mpptActive / mpptTotal
+		final int effectiveMaxW = (maxTotalPowerW > 0 && mpptTotal > 0)
+				? (int) Math.round(maxTotalPowerW * (mpptActive / (double) mpptTotal))
+				: maxTotalPowerW;
 
-		this.powerLimitHandler.applyAcRegulated(
+
+		this.powerLimitHandler.applyMpptScaled(
 				targetLimitW,
-				maxTotalPowerW,
+				effectiveMaxW,
 				minPercent,
-				actualAcPowerW,
-				actualDcPowerW,
-				dcPeakTotalW,
+				mpptActive,
+				mpptTotal,
 				now,
 				new HoymilesPowerLimitHandler.Actions() {
 
@@ -463,9 +427,9 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 					}
 
 					@Override
-					public void setLimitWUi(Integer w) {
+					public void setLimitWUi(Integer watt) {
 						PvInverterHoymilesHMSHMTImpl.this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_W)
-								.setNextValue(w);
+								.setNextValue(watt);
 					}
 
 					@Override
@@ -482,7 +446,10 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 					@Override
 					public void debug(String message) {
 						if (PvInverterHoymilesHMSHMTImpl.this.config != null && PvInverterHoymilesHMSHMTImpl.this.config.debugMode()) {
-							PvInverterHoymilesHMSHMTImpl.this.logInfo(PvInverterHoymilesHMSHMTImpl.this.log, message);
+							PvInverterHoymilesHMSHMTImpl.this.logInfo(PvInverterHoymilesHMSHMTImpl.this.log, message
+									+ " modelMax=" + maxTotalPowerW + "W"
+									+ " effMax=" + effectiveMaxW + "W"
+									+ " mpptActive=" + mpptActive + "/" + mpptTotal);
 						}
 					}
 				});
@@ -627,13 +594,41 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_WARNING).setNextValue(warning);
 	}
 
-	private int readIntChannelOrDefault(PvInverterHoymilesHMSHMT.ChannelId channelId, int defaultValue) {
-		Optional<?> opt = this.channel(channelId).value().asOptional();
-		if (!opt.isPresent() || !(opt.get() instanceof Number)) {
-			return defaultValue;
+	
+	private int getActiveMpptCountFromConfig(DeviceModel model) {
+		final int mpptTotal = (model != null) ? model.getMpptTotal() : 1;
+
+		int active = 0;
+
+		// MPPT1: PV1-2
+		final boolean mppt1 = (this.config != null)
+				&& ((this.config.pv1ModulePeakPowerW() > 0) || (this.config.pv2ModulePeakPowerW() > 0));
+		if (mpptTotal >= 1 && mppt1) {
+			active++;
 		}
-		return ((Number) opt.get()).intValue();
+
+		// MPPT2: PV3-4
+		final boolean mppt2 = (this.config != null)
+				&& ((this.config.pv3ModulePeakPowerW() > 0) || (this.config.pv4ModulePeakPowerW() > 0));
+		if (mpptTotal >= 2 && mppt2) {
+			active++;
+		}
+
+		// MPPT3: PV5-6
+		final boolean mppt3 = (this.config != null)
+				&& ((this.config.pv5ModulePeakPowerW() > 0) || (this.config.pv6ModulePeakPowerW() > 0));
+		if (mpptTotal >= 3 && mppt3) {
+			active++;
+		}
+
+		//mrdomek Why: if config does not define any PV peaks, fall back to "all MPPTs active" to avoid accidental over-limiting.
+		if (active <= 0) {
+			active = mpptTotal;
+		}
+
+		return active;
 	}
+
 
 	private static String interpretHoymilesStatus(int totalPower, int rawStatusCode, int alarm1, int alarm2, int alarm3, int alarm4, int alarm5,
 			int alarm6) {
