@@ -10,9 +10,9 @@ import java.util.List;
  * //mrdomek Why: RunState/Health must depend only on FAULT/WARNING, while INFO/IGNORED remain visible.
  * //mrdomek Alarm semantics are defined in HoymilesAlarmBit only (single source of truth).
  */
-public final class HoymilesMi1StateLogic {
+public final class HoymilesMiStateLogic {
 
-	private HoymilesMi1StateLogic() {
+	private HoymilesMiStateLogic() {
 	}
 
 	public enum Mi1Status {

@@ -274,7 +274,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		 * Get total AC active power from microinverter block.
 		 * This is already scaled to W via Modbus mapping.
 		 */
-		Optional<?> pOpt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ACTIVE_POWER_W)
+		Optional<?> pOpt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ACTIVE_POWER_W)
 				.value()
 				.asOptional();
 
@@ -325,33 +325,33 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		 * If peak = 0 or missing power -> channel is set to null.
 		 */
 		updatePvUtilization(
-				PvInverterHoymilesHMSHMT.ChannelId.MI1_PV1_POWER_W,
-				PvInverterHoymilesHMSHMT.ChannelId.MI1_PV1_UTILIZATION_PERCENT,
+				PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV1_POWER_W,
+				PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV1_UTILIZATION_PERCENT,
 				this.config.pv1ModulePeakPowerW());
 
 		updatePvUtilization(
-				PvInverterHoymilesHMSHMT.ChannelId.MI1_PV2_POWER_W,
-				PvInverterHoymilesHMSHMT.ChannelId.MI1_PV2_UTILIZATION_PERCENT,
+				PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV2_POWER_W,
+				PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV2_UTILIZATION_PERCENT,
 				this.config.pv2ModulePeakPowerW());
 
 		updatePvUtilization(
-				PvInverterHoymilesHMSHMT.ChannelId.MI1_PV3_POWER_W,
-				PvInverterHoymilesHMSHMT.ChannelId.MI1_PV3_UTILIZATION_PERCENT,
+				PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV3_POWER_W,
+				PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV3_UTILIZATION_PERCENT,
 				this.config.pv3ModulePeakPowerW());
 
 		updatePvUtilization(
-				PvInverterHoymilesHMSHMT.ChannelId.MI1_PV4_POWER_W,
-				PvInverterHoymilesHMSHMT.ChannelId.MI1_PV4_UTILIZATION_PERCENT,
+				PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV4_POWER_W,
+				PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV4_UTILIZATION_PERCENT,
 				this.config.pv4ModulePeakPowerW());
 
 		updatePvUtilization(
-				PvInverterHoymilesHMSHMT.ChannelId.MI1_PV5_POWER_W,
-				PvInverterHoymilesHMSHMT.ChannelId.MI1_PV5_UTILIZATION_PERCENT,
+				PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV5_POWER_W,
+				PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV5_UTILIZATION_PERCENT,
 				this.config.pv5ModulePeakPowerW());
 
 		updatePvUtilization(
-				PvInverterHoymilesHMSHMT.ChannelId.MI1_PV6_POWER_W,
-				PvInverterHoymilesHMSHMT.ChannelId.MI1_PV6_UTILIZATION_PERCENT,
+				PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV6_POWER_W,
+				PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV6_UTILIZATION_PERCENT,
 				this.config.pv6ModulePeakPowerW());
 
 		// Update alarm/status summary channel (now per-register, not OR-combined)
@@ -361,16 +361,16 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		updateHealthFromStatusAndAlarms(pTotal);
 
 		// Build interpreted status using full status+alarm context (not just hasAlarm)
-		final int status = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_STATUS_CODE);
-		final int alarm1 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM1_CODE);
-		final int alarm2 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM2_CODE);
-		final int alarm3 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM3_CODE);
-		final int alarm4 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM4_CODE);
-		final int alarm5 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM5_CODE);
-		final int alarm6 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM6_CODE);
+		final int status = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_STATUS_CODE);
+		final int alarm1 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM1_CODE);
+		final int alarm2 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM2_CODE);
+		final int alarm3 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM3_CODE);
+		final int alarm4 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM4_CODE);
+		final int alarm5 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM5_CODE);
+		final int alarm6 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM6_CODE);
 
 		final String interpretedStatus = interpretHoymilesStatus(pTotal, status, alarm1, alarm2, alarm3, alarm4, alarm5, alarm6);
-		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_INTERPRETED_STATUS).setNextValue(interpretedStatus);
+		this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_INTERPRETED_STATUS).setNextValue(interpretedStatus);
 
 		// Trigger für die erweiterte Debug-Ausgabe
 		this.logDebug(this.log, "Next Cycle");
@@ -384,7 +384,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
 		// For visibility in standard channels + debug log
 		this.channel(ManagedSymmetricPvInverter.ChannelId.ACTIVE_POWER_LIMIT).setNextValue(normalized);
-		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_W).setNextValue(normalized);
+		this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_LIMIT_ACTIVE_POWER_W).setNextValue(normalized);
 
 		//mrdomek Debug-only: prove that the manager/controller actually calls this method.
 		if (this.config != null && this.config.debugMode()) {
@@ -442,7 +442,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		}
 
 		// Mirror for UI/debug
-		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_W).setNextValue(targetLimitW);
+		this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_LIMIT_ACTIVE_POWER_W).setNextValue(targetLimitW);
 
 
 		final int mpptTotal = (model != null) ? model.getMpptTotal() : 1;
@@ -471,13 +471,13 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
 					@Override
 					public void setLimitWUi(Integer watt) {
-						PvInverterHoymilesHMSHMTImpl.this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_W)
+						PvInverterHoymilesHMSHMTImpl.this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_LIMIT_ACTIVE_POWER_W)
 								.setNextValue(watt);
 					}
 
 					@Override
 					public void setLimitPercentUi(Integer percent) {
-						PvInverterHoymilesHMSHMTImpl.this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
+						PvInverterHoymilesHMSHMTImpl.this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_LIMIT_ACTIVE_POWER_PERCENT)
 								.setNextValue(percent);
 					}
 
@@ -569,7 +569,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		Integer status = null;
 
 		// Read status code
-		Optional<?> statusOpt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_STATUS_CODE) //
+		Optional<?> statusOpt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_STATUS_CODE) //
 				.value() //
 				.asOptional();
 		if (statusOpt.isPresent() && statusOpt.get() instanceof Number) {
@@ -585,63 +585,63 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		int alarm5 = 0;
 		int alarm6 = 0;
 
-		Optional<?> a1 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM1_CODE).value().asOptional();
+		Optional<?> a1 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM1_CODE).value().asOptional();
 		if (a1.isPresent() && a1.get() instanceof Number) {
 			alarm1 = ((Number) a1.get()).intValue();
 			hasData = true;
 		}
 
-		Optional<?> a2 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM2_CODE).value().asOptional();
+		Optional<?> a2 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM2_CODE).value().asOptional();
 		if (a2.isPresent() && a2.get() instanceof Number) {
 			alarm2 = ((Number) a2.get()).intValue();
 			hasData = true;
 		}
 
-		Optional<?> a3 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM3_CODE).value().asOptional();
+		Optional<?> a3 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM3_CODE).value().asOptional();
 		if (a3.isPresent() && a3.get() instanceof Number) {
 			alarm3 = ((Number) a3.get()).intValue();
 			hasData = true;
 		}
 
-		Optional<?> a4 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM4_CODE).value().asOptional();
+		Optional<?> a4 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM4_CODE).value().asOptional();
 		if (a4.isPresent() && a4.get() instanceof Number) {
 			alarm4 = ((Number) a4.get()).intValue();
 			hasData = true;
 		}
 
-		Optional<?> a5 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM5_CODE).value().asOptional();
+		Optional<?> a5 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM5_CODE).value().asOptional();
 		if (a5.isPresent() && a5.get() instanceof Number) {
 			alarm5 = ((Number) a5.get()).intValue();
 			hasData = true;
 		}
 
-		Optional<?> a6 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM6_CODE).value().asOptional();
+		Optional<?> a6 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM6_CODE).value().asOptional();
 		if (a6.isPresent() && a6.get() instanceof Number) {
 			alarm6 = ((Number) a6.get()).intValue();
 			hasData = true;
 		}
 
-		final boolean hasAlarm = HoymilesMi1StateLogic.hasAnyAlarm(alarm1, alarm2, alarm3, alarm4, alarm5, alarm6);
+		final boolean hasAlarm = HoymilesMiStateLogic.hasAnyAlarm(alarm1, alarm2, alarm3, alarm4, alarm5, alarm6);
 
 		final DeviceModel model = (this.config != null) ? this.config.deviceModel() : null;
 		final int inputChannels = (model != null) ? model.getInputChannels() : 6;
 
 		final boolean[] pvInstalled = this.buildPvInstalledFlagsFromConfig();
 
-		final HoymilesMi1StateLogic.AlarmClassification cls = HoymilesMi1StateLogic.classify(hasData, totalPowerW, status, inputChannels,
+		final HoymilesMiStateLogic.AlarmClassification cls = HoymilesMiStateLogic.classify(hasData, totalPowerW, status, inputChannels,
 				pvInstalled, alarm1, alarm2, alarm3, alarm4, alarm5, alarm6);
 
 		//mrdomek Why: RunState/Health must only depend on FAULT/WARNING, while INFO/IGNORED remain visible for diagnostics.
 		final boolean fault = cls.hasFault;
 		final boolean warning = cls.hasWarning;
 
-		final String health = HoymilesMi1StateLogic.toHealthState(hasData, fault, warning);
+		final String health = HoymilesMiStateLogic.toHealthState(hasData, fault, warning);
 
-		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_HAS_ALARM).setNextValue(hasAlarm);
-		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_HEALTH_STATE).setNextValue(health);
+		this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_HAS_ALARM).setNextValue(hasAlarm);
+		this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_HEALTH_STATE).setNextValue(health);
 
-		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_FAULT).setNextValue(fault);
-		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_WARNING).setNextValue(warning);
+		this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_FAULT).setNextValue(fault);
+		this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_WARNING).setNextValue(warning);
 	}
 
 	
@@ -704,7 +704,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 	
 	private static String interpretHoymilesStatus(int totalPower, int rawStatusCode, int alarm1, int alarm2, int alarm3, int alarm4, int alarm5,
 			int alarm6) {
-		return HoymilesMi1StateLogic.interpretHoymilesStatus(totalPower, rawStatusCode, alarm1, alarm2, alarm3, alarm4, alarm5, alarm6);
+		return HoymilesMiStateLogic.interpretHoymilesStatus(totalPower, rawStatusCode, alarm1, alarm2, alarm3, alarm4, alarm5, alarm6);
 	}
 
 	private void updateStaticPowerLimitsFromModel() {
@@ -732,7 +732,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		boolean hasData = false;
 		Integer status = null;
 
-		Optional<?> statusOpt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_STATUS_CODE).value().asOptional();
+		Optional<?> statusOpt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_STATUS_CODE).value().asOptional();
 		if (statusOpt.isPresent() && statusOpt.get() instanceof Number) {
 			status = ((Number) statusOpt.get()).intValue();
 			hasData = true;
@@ -745,37 +745,37 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		int alarm5 = 0;
 		int alarm6 = 0;
 
-		Optional<?> a1 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM1_CODE).value().asOptional();
+		Optional<?> a1 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM1_CODE).value().asOptional();
 		if (a1.isPresent() && a1.get() instanceof Number) {
 			alarm1 = ((Number) a1.get()).intValue();
 			hasData = true;
 		}
 
-		Optional<?> a2 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM2_CODE).value().asOptional();
+		Optional<?> a2 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM2_CODE).value().asOptional();
 		if (a2.isPresent() && a2.get() instanceof Number) {
 			alarm2 = ((Number) a2.get()).intValue();
 			hasData = true;
 		}
 
-		Optional<?> a3 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM3_CODE).value().asOptional();
+		Optional<?> a3 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM3_CODE).value().asOptional();
 		if (a3.isPresent() && a3.get() instanceof Number) {
 			alarm3 = ((Number) a3.get()).intValue();
 			hasData = true;
 		}
 
-		Optional<?> a4 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM4_CODE).value().asOptional();
+		Optional<?> a4 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM4_CODE).value().asOptional();
 		if (a4.isPresent() && a4.get() instanceof Number) {
 			alarm4 = ((Number) a4.get()).intValue();
 			hasData = true;
 		}
 
-		Optional<?> a5 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM5_CODE).value().asOptional();
+		Optional<?> a5 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM5_CODE).value().asOptional();
 		if (a5.isPresent() && a5.get() instanceof Number) {
 			alarm5 = ((Number) a5.get()).intValue();
 			hasData = true;
 		}
 
-		Optional<?> a6 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM6_CODE).value().asOptional();
+		Optional<?> a6 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM6_CODE).value().asOptional();
 		if (a6.isPresent() && a6.get() instanceof Number) {
 			alarm6 = ((Number) a6.get()).intValue();
 			hasData = true;
@@ -786,19 +786,19 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
 		final boolean[] pvInstalled = this.buildPvInstalledFlagsFromConfig();
 
-		final HoymilesMi1StateLogic.AlarmClassification cls = HoymilesMi1StateLogic.classify(hasData, totalPowerW, status, inputChannels,
+		final HoymilesMiStateLogic.AlarmClassification cls = HoymilesMiStateLogic.classify(hasData, totalPowerW, status, inputChannels,
 				pvInstalled, alarm1, alarm2, alarm3, alarm4, alarm5, alarm6);
 
-		final String summaryFaultWarn = HoymilesMi1StateLogic.buildSummaryString(merge(cls.faultSummary, cls.warningSummary));
-		final String summaryInfo = HoymilesMi1StateLogic.buildSummaryString(cls.infoSummary);
-		final String summaryIgnored = HoymilesMi1StateLogic.buildSummaryString(cls.ignoredSummary);
+		final String summaryFaultWarn = HoymilesMiStateLogic.buildSummaryString(merge(cls.faultSummary, cls.warningSummary));
+		final String summaryInfo = HoymilesMiStateLogic.buildSummaryString(cls.infoSummary);
+		final String summaryIgnored = HoymilesMiStateLogic.buildSummaryString(cls.ignoredSummary);
 
 		// Write to channels for UI/diagnostics
-		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM_SUMMARY).setNextValue(summaryFaultWarn);
+		this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM_SUMMARY).setNextValue(summaryFaultWarn);
 
 		// NOTE: these two ChannelIds must be added to PvInverterHoymilesHMSHMT.ChannelId
-		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM_SUMMARY_INFO).setNextValue(summaryInfo);
-		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM_SUMMARY_IGNORED).setNextValue(summaryIgnored);
+		this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM_SUMMARY_INFO).setNextValue(summaryInfo);
+		this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM_SUMMARY_IGNORED).setNextValue(summaryIgnored);
 	}
 
 	private static List<String> merge(List<String> a, List<String> b) {
@@ -887,9 +887,9 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		for (int mi = 1; mi <= this.microinverterNumber; mi++) {
 			final PvInverterHoymilesHMSHMT.ChannelId ch;
 			try {
-				ch = PvInverterHoymilesHMSHMT.ChannelId.valueOf("DTU__CONNECTED_MI" + mi + "_SERIAL");
+				ch = PvInverterHoymilesHMSHMT.ChannelId.valueOf("DTU_CONNECTED_MI" + mi + "_SERIAL");
 			} catch (IllegalArgumentException e) {
-				log.warn("PowerLimit: Missing ChannelId DTU__CONNECTED_MI{}_SERIAL -> block writes", mi);
+				log.warn("PowerLimit: Missing ChannelId DTU_CONNECTED_MI{}_SERIAL -> block writes", mi);
 				this.portOnOff = null;
 				this.portTempLimitActivePower = null;
 				return;
@@ -1260,7 +1260,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		// -----------------------------------------------------------------------------------------
 		this.dtuRegisteredMicroinverterCount = new SignedWordElement(DTU_REGISTERED_MICROINVERTER_COUNT_REG);
 
-		// --- DTU Serial List: map directly to DTU__CONNECTED_MI<n>_SERIAL (String) ---
+		// --- DTU Serial List: map directly to DTU_CONNECTED_MI<n>_SERIAL (String) ---
 		for (int mi = 1; mi <= MAX_MICROINVERTERS; mi++) {
 			final int index = mi - 1;
 			final int reg = DTU_SERIAL_LIST_BASE_REG + (index * DTU_SERIAL_WORDS_PER_MI);
@@ -1269,7 +1269,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 			this.dtuSerialListSerials[index] = el;
 
 			//mrdomek Why: bind element to channel so OpenEMS stores the computed string value.
-			this.m(PvInverterHoymilesHMSHMT.ChannelId.valueOf("DTU__CONNECTED_MI" + mi + "_SERIAL"), el);
+			this.m(PvInverterHoymilesHMSHMT.ChannelId.valueOf("DTU_CONNECTED_MI" + mi + "_SERIAL"), el);
 		}
 
 		// -----------------------------------------------------------------------------------------
@@ -1291,93 +1291,93 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		// -----------------------------------------------------------------------------------------
 		// Channel mappings (Read)
 		// -----------------------------------------------------------------------------------------
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_SERIAL, mi1Serial);
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_SERIAL, mi1Serial);
 
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_TOTAL_PRODUCTION_WH, totalProductionWh);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_TODAY_PRODUCTION_WH, todayProductionWh);
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_TOTAL_PRODUCTION_WH, totalProductionWh);
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_TODAY_PRODUCTION_WH, todayProductionWh);
 
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_ACTIVE_POWER_W, activePower,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ACTIVE_POWER_W, activePower,
 				ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
 
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_REACTIVE_POWER_VAR, reactivePower,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_REACTIVE_POWER_VAR, reactivePower,
 				ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
 
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_POWER_FACTOR, powerFactor,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_POWER_FACTOR, powerFactor,
 				ElementToChannelConverter.SCALE_FACTOR_MINUS_3);
 
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_VOLTAGE_L1_mV, vphA,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_AC_VOLTAGE_L1_mV, vphA,
 				ElementToChannelConverter.SCALE_FACTOR_2);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_VOLTAGE_L2_mV, vphB,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_AC_VOLTAGE_L2_mV, vphB,
 				ElementToChannelConverter.SCALE_FACTOR_2);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_VOLTAGE_L3_mV, vphC,
-				ElementToChannelConverter.SCALE_FACTOR_2);
-
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_VOLTAGE_L1_L2_mV, uab,
-				ElementToChannelConverter.SCALE_FACTOR_2);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_VOLTAGE_L2_L3_mV, ubc,
-				ElementToChannelConverter.SCALE_FACTOR_2);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_VOLTAGE_L3_L1_mV, uca,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_AC_VOLTAGE_L3_mV, vphC,
 				ElementToChannelConverter.SCALE_FACTOR_2);
 
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_CURRENT_L1_mA, iphA,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_AC_VOLTAGE_L1_L2_mV, uab,
+				ElementToChannelConverter.SCALE_FACTOR_2);
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_AC_VOLTAGE_L2_L3_mV, ubc,
+				ElementToChannelConverter.SCALE_FACTOR_2);
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_AC_VOLTAGE_L3_L1_mV, uca,
+				ElementToChannelConverter.SCALE_FACTOR_2);
+
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_AC_CURRENT_L1_mA, iphA,
 				ElementToChannelConverter.SCALE_FACTOR_1);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_CURRENT_L2_mA, iphB,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_AC_CURRENT_L2_mA, iphB,
 				ElementToChannelConverter.SCALE_FACTOR_1);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_AC_CURRENT_L3_mA, iphC,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_AC_CURRENT_L3_mA, iphC,
 				ElementToChannelConverter.SCALE_FACTOR_1);
 
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_GRID_FREQUENCY_mHz, frequency,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_GRID_FREQUENCY_mHz, frequency,
 				ElementToChannelConverter.SCALE_FACTOR_1);
 
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_TEMPERATURE_C, temperature,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_TEMPERATURE_C, temperature,
 				ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
 
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV1_VOLTAGE_mV, pv1Voltage,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV1_VOLTAGE_mV, pv1Voltage,
 				ElementToChannelConverter.SCALE_FACTOR_2);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV2_VOLTAGE_mV, pv2Voltage,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV2_VOLTAGE_mV, pv2Voltage,
 				ElementToChannelConverter.SCALE_FACTOR_2);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV3_VOLTAGE_mV, pv3Voltage,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV3_VOLTAGE_mV, pv3Voltage,
 				ElementToChannelConverter.SCALE_FACTOR_2);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV4_VOLTAGE_mV, pv4Voltage,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV4_VOLTAGE_mV, pv4Voltage,
 				ElementToChannelConverter.SCALE_FACTOR_2);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV5_VOLTAGE_mV, pv5Voltage,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV5_VOLTAGE_mV, pv5Voltage,
 				ElementToChannelConverter.SCALE_FACTOR_2);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV6_VOLTAGE_mV, pv6Voltage,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV6_VOLTAGE_mV, pv6Voltage,
 				ElementToChannelConverter.SCALE_FACTOR_2);
 
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV1_CURRENT_mA, pv1Current,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV1_CURRENT_mA, pv1Current,
 				ElementToChannelConverter.SCALE_FACTOR_1);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV2_CURRENT_mA, pv2Current,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV2_CURRENT_mA, pv2Current,
 				ElementToChannelConverter.SCALE_FACTOR_1);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV3_CURRENT_mA, pv3Current,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV3_CURRENT_mA, pv3Current,
 				ElementToChannelConverter.SCALE_FACTOR_1);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV4_CURRENT_mA, pv4Current,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV4_CURRENT_mA, pv4Current,
 				ElementToChannelConverter.SCALE_FACTOR_1);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV5_CURRENT_mA, pv5Current,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV5_CURRENT_mA, pv5Current,
 				ElementToChannelConverter.SCALE_FACTOR_1);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV6_CURRENT_mA, pv6Current,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV6_CURRENT_mA, pv6Current,
 				ElementToChannelConverter.SCALE_FACTOR_1);
 
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV1_POWER_W, pv1Power,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV1_POWER_W, pv1Power,
 				ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV2_POWER_W, pv2Power,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV2_POWER_W, pv2Power,
 				ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV3_POWER_W, pv3Power,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV3_POWER_W, pv3Power,
 				ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV4_POWER_W, pv4Power,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV4_POWER_W, pv4Power,
 				ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV5_POWER_W, pv5Power,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV5_POWER_W, pv5Power,
 				ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_PV6_POWER_W, pv6Power,
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_PV6_POWER_W, pv6Power,
 				ElementToChannelConverter.SCALE_FACTOR_MINUS_1);
 
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_STATUS_CODE, status);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM1_CODE, alarm1);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM2_CODE, alarm2);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM3_CODE, alarm3);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM4_CODE, alarm4);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM5_CODE, alarm5);
-		this.m(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM6_CODE, alarm6);
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_STATUS_CODE, status);
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM1_CODE, alarm1);
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM2_CODE, alarm2);
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM3_CODE, alarm3);
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM4_CODE, alarm4);
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM5_CODE, alarm5);
+		this.m(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM6_CODE, alarm6);
 
 
 		/*
@@ -1433,7 +1433,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		 * This keeps reads minimal and avoids Modbus max-register limits without needing dynamic tasks.
 		 */
 		//mrdomek Why: Protocol task list is static; we cannot depend on runtime value of 0x3004 here.
-		//mrdomek Why: To guarantee that DTU__CONNECTED_MIxx_SERIAL channels can be populated for all registered devices,
+		//mrdomek Why: To guarantee that DTU_CONNECTED_MIxx_SERIAL channels can be populated for all registered devices,
 		//mrdomek      we read the whole DTU serial list (LOW priority, chunked).
 		/*
 		 * Serial list: We only need prefixes up to the configured microinverterNumber (for write-port mapping).
@@ -1507,14 +1507,14 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
 		/*
 		 * IMPORTANT:
-		 * Channels are historically named MI1_* due to the vendor documentation wording,
+		 * Channels are historically named SEL_MI_* due to the vendor documentation wording,
 		 * but semantically they represent the SELECTED MI of this component (selMi).
 		 */
-		final String pAcW = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ACTIVE_POWER_W)
+		final String pAcW = this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ACTIVE_POWER_W)
 				.value().asString();
-		final String limitW = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_W)
+		final String limitW = this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_LIMIT_ACTIVE_POWER_W)
 				.value().asString();
-		final String limitPercentCh = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_PERCENT)
+		final String limitPercentCh = this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_LIMIT_ACTIVE_POWER_PERCENT)
 				.value().asString();
 
 		sb.append("|sel.P_ac=").append(pAcW);
@@ -1529,11 +1529,11 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		sb.append("|portOn=").append(
 				this.lastWrittenPortOn != null ? (this.lastWrittenPortOn.booleanValue() ? "1" : "0") : "-");
 
-		final String health = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_HEALTH_STATE)
+		final String health = this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_HEALTH_STATE)
 				.value().asString();
-		final String interpretedStatus = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_INTERPRETED_STATUS)
+		final String interpretedStatus = this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_INTERPRETED_STATUS)
 				.value().asString();
-		final String alarmSummary = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM_SUMMARY)
+		final String alarmSummary = this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM_SUMMARY)
 				.value().asString();
 
 		sb.append("|sel.health=").append(health);
@@ -1547,15 +1547,15 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 			sb.append("|dtu.count=").append(dtuCnt);
 
 			final String dtuSelSerial = this.channel(PvInverterHoymilesHMSHMT.ChannelId.valueOf(
-					"DTU__CONNECTED_MI" + selMi + "_SERIAL")).value().asString();
+					"DTU_CONNECTED_MI" + selMi + "_SERIAL")).value().asString();
 			sb.append("|dtu.selSerial=").append(dtuSelSerial);
 
 			// show MI1/MI2 serials for quick sanity when only 2 are registered
-			final String dtuMi1 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.DTU__CONNECTED_MI1_SERIAL)
+			final String dtuMi1 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.DTU_CONNECTED_MI1_SERIAL)
 					.value().asString();
 			sb.append("|dtu.mi1=").append(dtuMi1);
 
-			final String dtuMi2 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.DTU__CONNECTED_MI2_SERIAL)
+			final String dtuMi2 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.DTU_CONNECTED_MI2_SERIAL)
 					.value().asString();
 			sb.append("|dtu.mi2=").append(dtuMi2);
 		} catch (Exception e) {
