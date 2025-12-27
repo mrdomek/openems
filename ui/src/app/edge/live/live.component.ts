@@ -25,8 +25,9 @@ export class LiveComponent implements OnDestroy {
     protected showRefreshDragDown: boolean = false;
     protected showNewFooter: boolean = false;
 
-    //mrdomek Primary match: factoryId of the Hoymiles driver
-    protected readonly HOYMILES_FACTORY_ID: string = "io.openems.edge.pvinverter.hoymiles";
+    //mrdomek Hard fact from UI config: Hoymiles HMS/HMT components arrive with this exact factoryId.
+    //mrdomek We match EXACTLY against this string to ensure the widget only appears for this driver.
+    protected readonly HOYMILES_FACTORY_ID: string = "PV-Inverter.Hoymiles.HMS-HMT";
 
     private stopOnDestroy: Subject<void> = new Subject<void>();
     private interval: ReturnType<typeof setInterval> | undefined;
@@ -50,13 +51,22 @@ export class LiveComponent implements OnDestroy {
             this.service.getConfig().then(config => {
                 this.config = config;
                 this.widgets = navigationService.getWidgets(config.widgets, userService.currentUser(), edge);
+
+                //mrdomek Optional debug helper: enable by adding "?debugHoymiles=1" to the URL.
+                //mrdomek This prints the factoryId list so future mismatches are obvious immediately.
+                if (this.isHoymilesDebugEnabled()) {
+                    this.debugPrintFactoryIds(config);
+                    // eslint-disable-next-line no-console
+                    console.log("Hoymiles widget componentIds:", this.hoymilesComponents);
+                }
             });
+
             this.checkIfRefreshNeeded();
         });
     }
 
-    //mrdomek All componentIds that use the Hoymiles driver get one widget.
-    //mrdomek If no exact factoryId match is found, we fall back to IDs starting with "pvinverter".
+    //mrdomek Returns all componentIds whose factoryId EXACTLY matches the Hoymiles driver factoryId.
+    //mrdomek No fallback by componentId prefix is used (by request) to avoid false positives.
     public get hoymilesComponents(): string[] {
         const cfg: any = this.config;
         if (!cfg || !cfg.components) {
@@ -64,23 +74,12 @@ export class LiveComponent implements OnDestroy {
         }
 
         const components = cfg.components as Record<string, { factoryId?: string }>;
-        const target = this.HOYMILES_FACTORY_ID.toLowerCase();
+        const target = this.HOYMILES_FACTORY_ID;
 
-        const factoryMatches = Object.keys(components).filter((componentId) => {
+        return Object.keys(components).filter((componentId) => {
             const factoryId = components[componentId]?.factoryId;
-            return typeof factoryId === "string" && factoryId.toLowerCase() === target;
+            return typeof factoryId === "string" && factoryId === target;
         });
-
-        if (factoryMatches.length > 0) {
-            return factoryMatches;
-        }
-
-        //mrdomek Fallback: treat pvInverter* components as Hoymiles, useful while driver naming is still evolving.
-        const fallbackMatches = Object.keys(components).filter((componentId) =>
-            componentId.toLowerCase().startsWith("pvinverter"),
-        );
-
-        return fallbackMatches;
     }
 
     public ionViewWillEnter() {
@@ -119,5 +118,23 @@ export class LiveComponent implements OnDestroy {
             }
             this.showRefreshDragDown = DateTimeUtils.isDifferenceInSecondsGreaterThan(20, new Date(), lastUpdate);
         }, 5000);
+    }
+
+    private isHoymilesDebugEnabled(): boolean {
+        //mrdomek We intentionally read the query param from the current route snapshot to keep this minimal.
+        return this.route.snapshot.queryParamMap.get("debugHoymiles") === "1";
+    }
+
+    private debugPrintFactoryIds(config: EdgeConfig): void {
+        const cfg: any = config as any;
+        const components: Record<string, { factoryId?: string }> = cfg?.components ?? {};
+
+        const rows = Object.keys(components).map(id => ({
+            componentId: id,
+            factoryId: components[id]?.factoryId ?? "(undefined)",
+        }));
+
+        // eslint-disable-next-line no-console
+        console.table(rows);
     }
 }

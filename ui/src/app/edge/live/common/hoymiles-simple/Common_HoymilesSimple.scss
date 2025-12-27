@@ -1,17 +1,29 @@
-:host {
-    display: block;
+//mrdomek Add spacing between the two side-by-side bars and render a visible center divider
+.hm-pair-grid {
+    width: 100%;
 }
 
-/* Optional kannst du hier später z.B. Abstände oder Farben anpassen.
-   Die eigentliche Balken-Optik kommt vom oe-flat-widget-percentagebar. */
-
-.hoymiles-bar-pair {
-    display: flex;
-    gap: 0.5rem;
-    margin-top: 0.25rem;
-    margin-bottom: 0.5rem;
+.hm-col {
+    //mrdomek Provide breathing room between the two columns and between rows of elements.
+    padding-top: 6px;
+    padding-bottom: 6px;
 }
 
-.hoymiles-bar {
-    flex: 1 1 0;
+.hm-col-left {
+    //mrdomek Space to the center divider.
+    padding-right: 10px;
+}
+
+.hm-col-right {
+    //mrdomek Space to the center divider.
+    padding-left: 10px;
+
+    //mrdomek Visual center separator to distinguish PV1 vs PV2 (and PV3 vs PV4, ...).
+    border-left: 1px solid var(--ion-color-step-250, rgba(0, 0, 0, 0.2));
+}
+
+.hm-bar {
+    //mrdomek Keep some distance around the percentage bar so the layout does not look cramped.
+    margin-top: 6px;
+    margin-bottom: 6px;
 }

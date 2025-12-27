@@ -1,31 +1,65 @@
 <oe-flat-widget (click)="presentModal()" [icon]="{ name: 'sunny-outline' }" [title]="title">
 
-  <!-- Seriennummer -->
   <oe-flat-widget-line [name]="'Serial'" [channelAddress]="getSerialAddress()">
   </oe-flat-widget-line>
 
-  <!-- AC-Gesamtleistung -->
   <oe-flat-widget-line [name]="'AC Power [W]'" [channelAddress]="getAcPowerAddress()">
   </oe-flat-widget-line>
 
   <oe-flat-widget-horizontal-line></oe-flat-widget-horizontal-line>
 
-  <!-- DC-Eingänge: je String Utilization + Power + Balken -->
-  <ng-container *ngFor="let input of inputs">
+  <ng-container *ngFor="let _ of inputs; let i = index">
+    <ng-container *ngIf="i % 2 === 0">
 
-    <oe-flat-widget-line [name]="input.label + ' Utilization [%]'" [channelAddress]="getUtilizationAddress(input)">
-    </oe-flat-widget-line>
+      <ion-grid class="ion-no-padding hm-pair-grid">
+        <ion-row class="ion-no-padding hm-pair-row">
 
-    <oe-flat-widget-line [name]="input.label + ' Power [W]'" [channelAddress]="getPowerAddress(input)">
-    </oe-flat-widget-line>
+          <ion-col size="6" class="ion-no-padding hm-col hm-col-left" *ngIf="inputs[i] as input1">
 
-    <oe-flat-widget-percentagebar [channelAddress]="getUtilizationAddress(input)">
-    </oe-flat-widget-percentagebar>
+            <oe-flat-widget-line [name]="input1.label + ' Utilization [%]'"
+              [channelAddress]="getUtilizationAddress(input1)">
+            </oe-flat-widget-line>
 
-    <oe-flat-widget-horizontal-line></oe-flat-widget-horizontal-line>
+            <div class="hm-bar">
+              <oe-flat-widget-percentagebar [channelAddress]="getUtilizationAddress(input1)">
+              </oe-flat-widget-percentagebar>
+            </div>
+
+            <oe-flat-widget-line [name]="input1.label + ' Power [W]'" [channelAddress]="getPowerAddress(input1)">
+            </oe-flat-widget-line>
+
+          </ion-col>
+
+          <ion-col size="6" class="ion-no-padding hm-col hm-col-right" *ngIf="inputs[i + 1] as input2">
+
+            <oe-flat-widget-line [name]="input2.label + ' Utilization [%]'"
+              [channelAddress]="getUtilizationAddress(input2)">
+            </oe-flat-widget-line>
+
+            <div class="hm-bar">
+              <oe-flat-widget-percentagebar [channelAddress]="getUtilizationAddress(input2)">
+              </oe-flat-widget-percentagebar>
+            </div>
+
+            <oe-flat-widget-line [name]="input2.label + ' Power [W]'" [channelAddress]="getPowerAddress(input2)">
+            </oe-flat-widget-line>
+
+          </ion-col>
+
+        </ion-row>
+      </ion-grid>
+
+      <!-- mrdomek Pair sum line (PV1+PV2, PV3+PV4, ...) computed from CurrentData -->
+      <oe-flat-widget-line *ngIf="inputs[i] && inputs[i + 1]"
+        [name]="inputs[i].label + '+' + inputs[i + 1].label + ' Sum [W]'" [value]="getPairPowerSumW(i)"
+        [converter]="toWattString">
+      </oe-flat-widget-line>
+
+      <oe-flat-widget-horizontal-line></oe-flat-widget-horizontal-line>
+
+    </ng-container>
   </ng-container>
 
-  <!-- Alarme -->
   <oe-flat-widget-line [name]="'Alarm Summary'" [channelAddress]="getAlarmSummaryAddress()">
   </oe-flat-widget-line>
 
