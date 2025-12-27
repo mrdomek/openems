@@ -324,6 +324,27 @@ public interface PvInverterHoymilesHMSHMT extends ManagedSymmetricPvInverter, El
                             .text("Combined alarm/status bits for Microinverter 1, "
                                     + "derived from status and alarm codes 1–6.")),
             
+            MI1_ALARM_SUMMARY_INFO( //
+                    Doc.of(OpenemsType.STRING) //
+                            .unit(Unit.NONE) //
+                            .text(
+                                    //mrdomek Why: Informational alarms that must NOT influence RunState/Health.
+                                    //mrdomek This channel exposes benign or contextual conditions (e.g. night-mode effects)
+                                    //mrdomek so diagnostics remain visible without triggering WARNING or FAULT.
+                                    "Informational alarm summary for Microinverter 1. "
+                                            + "Contains alarms classified as INFO that do not affect RunState/Health.")),
+
+            MI1_ALARM_SUMMARY_IGNORED( //
+                    Doc.of(OpenemsType.STRING) //
+                            .unit(Unit.NONE) //
+                            .text(
+                                    //mrdomek Why: Explicitly show alarms that are intentionally ignored by configuration.
+                                    //mrdomek Example: PVx_NO_INPUT when pvPeakPowerW == 0 signals "no module installed".
+                                    //mrdomek These alarms are excluded from RunState/Health but must stay visible for clarity.
+                                    "Ignored alarm summary for Microinverter 1. "
+                                            + "Lists alarms suppressed by configuration (e.g. PVx_NO_INPUT with pvPeak=0).")),
+
+            
             // --- LIMIT CONTROL ---
             
             MI1_LIMIT_ACTIVE_POWER_W( //

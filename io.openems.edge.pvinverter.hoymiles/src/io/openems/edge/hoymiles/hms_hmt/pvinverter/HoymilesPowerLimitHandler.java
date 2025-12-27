@@ -49,6 +49,13 @@ public class HoymilesPowerLimitHandler {
 		return this.lastWrittenLimitPercent;
 	}
 
+	//mrdomek Why: allow the component to force a re-write after config/topology changes.
+	public void reset() {
+		this.lastLimitWriteTimestampMs = 0L;
+		this.lastWrittenLimitPercent = null;
+		this.lastTargetLimitW = null;
+	}
+
 	/**
 	 * Apply a target limit as "percent of effective max power".
 	 *
@@ -60,7 +67,7 @@ public class HoymilesPowerLimitHandler {
 	 * @param nowMs           current time for rate limiting
 	 * @param a               callbacks
 	 */
-	public void applyMpptScaled(Integer targetLimitW, int effectiveMaxW, int minPercent,
+	public void applyMpptScaled(Integer targetLimitW, int defaultPercentIfNoTarget, int effectiveMaxW, int minPercent,
 			int mpptActive, int mpptTotal, long nowMs, Actions a) {
 
 		final boolean canWriteNow = (nowMs - this.lastLimitWriteTimestampMs) >= this.minWriteIntervalMs;
@@ -69,59 +76,111 @@ public class HoymilesPowerLimitHandler {
 		a.setLimitWUi(targetLimitW);
 
 		if (targetLimitW == null) {
-			// Remove limit => 100%
-			if (this.lastWrittenLimitPercent != null && this.lastWrittenLimitPercent.shortValue() != 100) {
-				a.setPortOnOff(true);
-				a.setLimitPercentUi(Integer.valueOf(100));
+			int percent = defaultPercentIfNoTarget;
 
-				if (canWriteNow) {
-					a.debug("PowerLimit: target=null -> write 100% (remove limit).");
-					a.schedulePercentWrite((short) 100);
-
-					this.lastWrittenLimitPercent = Short.valueOf((short) 100);
-					this.lastTargetLimitW = null;
-					this.lastLimitWriteTimestampMs = nowMs;
-				} else {
-					a.debug("PowerLimit: target=null -> skip (rate-limit).");
-				}
-			} else {
-				a.setLimitPercentUi(Integer.valueOf(100));
-				a.debug("PowerLimit: target=null -> skip (already 100%).");
+			if (percent > 100) {
+				percent = 100;
 			}
+			if (percent < 0) {
+				percent = 0;
+			}
+
+			// Respect device minimum percent (only if percent > 0)
+			if (minPercent > 0 && percent > 0 && percent < minPercent) {
+				a.debug("PowerLimit: target=null -> clamp default percent to minPercent. " +
+						"defaultPercent=" + defaultPercentIfNoTarget + " -> " + percent + " -> " + minPercent);
+				percent = minPercent;
+			}
+
+			if (percent <= 0) {
+				a.setPortOnOff(false);
+				a.setLimitPercentUi(Integer.valueOf(0));
+				this.lastWrittenLimitPercent = null;
+				this.lastTargetLimitW = null;
+				return;
+			}
+
+			a.setPortOnOff(true);
+			a.setLimitPercentUi(Integer.valueOf(percent));
+
+			final short newPercentShort = (short) percent;
+
+			if (this.lastWrittenLimitPercent != null && this.lastWrittenLimitPercent.shortValue() == newPercentShort) {
+				a.debug("PowerLimit: target=null -> skip (default percent unchanged). percent=" + percent);
+				this.lastTargetLimitW = null;
+				return;
+			}
+
+			if (!canWriteNow) {
+				a.debug("PowerLimit: target=null -> skip (rate-limit). percent=" + percent);
+				this.lastTargetLimitW = null;
+				return;
+			}
+
+			a.debug("PowerLimit: WRITE default percent=" + percent);
+			a.schedulePercentWrite(newPercentShort);
+
+			this.lastWrittenLimitPercent = Short.valueOf(newPercentShort);
+			this.lastTargetLimitW = null;
+			this.lastLimitWriteTimestampMs = nowMs;
 			return;
 		}
 
-		int baseW = effectiveMaxW;
-		if (baseW <= 0) {
-			//mrdomek Why: avoid divide-by-zero; if base is unknown, fall back to 1 so we end up clamped to min/100.
-			baseW = 1;
+		// Target given in W -> map to percent of effectiveMaxW
+		final int normalizedW = Math.max(0, targetLimitW.intValue());
+
+		if (effectiveMaxW <= 0) {
+			// Cannot compute percent reliably; fail-safe: just keep port ON if target>0, else OFF.
+			if (normalizedW <= 0) {
+				a.setPortOnOff(false);
+				a.setLimitPercentUi(Integer.valueOf(0));
+			} else {
+				a.setPortOnOff(true);
+				a.setLimitPercentUi(null);
+			}
+			this.lastWrittenLimitPercent = null;
+			this.lastTargetLimitW = null;
+			return;
 		}
 
-		int effectiveTargetW = targetLimitW.intValue();
-		if (effectiveTargetW < 0) {
-			effectiveTargetW = 0;
+		if (normalizedW <= 0) {
+			a.setPortOnOff(false);
+			a.setLimitPercentUi(Integer.valueOf(0));
+			this.lastWrittenLimitPercent = null;
+			this.lastTargetLimitW = null;
+			return;
 		}
 
-		// Percent of effective max power
-		int percent = (int) Math.ceil((effectiveTargetW * 100.0) / (double) baseW);
+		// Clamp to effective max
+		final int effectiveTargetW = Math.min(normalizedW, effectiveMaxW);
+
+		double ratioExact = (double) effectiveTargetW / (double) effectiveMaxW;
+		int percent = (int) Math.ceil(ratioExact * 100.0);
 
 		if (percent > 100) {
 			percent = 100;
 		}
-		if (percent < minPercent) {
+		if (percent < 0) {
+			percent = 0;
+		}
+
+		if (minPercent > 0 && percent > 0 && percent < minPercent) {
 			a.debug("PowerLimit: clamp percent to minPercent. percent=" + percent + " -> " + minPercent);
 			percent = minPercent;
 		}
 
-		a.setPortOnOff(true);
-		a.setLimitPercentUi(Integer.valueOf(percent));
+		final int baseW = effectiveMaxW;
 
 		final short newPercentShort = (short) percent;
+
+		a.setPortOnOff(true);
+		a.setLimitPercentUi(Integer.valueOf(percent));
 
 		if (this.lastWrittenLimitPercent != null && this.lastWrittenLimitPercent.shortValue() == newPercentShort) {
 			a.debug("PowerLimit: skip (percent unchanged). percent=" + percent
 					+ " target=" + effectiveTargetW + "W baseW=" + baseW + "W"
 					+ " mpptActive=" + mpptActive + "/" + mpptTotal);
+			this.lastTargetLimitW = Integer.valueOf(effectiveTargetW);
 			return;
 		}
 

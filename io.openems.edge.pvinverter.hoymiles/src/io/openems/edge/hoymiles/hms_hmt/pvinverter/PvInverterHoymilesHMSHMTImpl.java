@@ -92,6 +92,10 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 	private final HoymilesPowerLimitHandler powerLimitHandler =
 			new HoymilesPowerLimitHandler(5_000L);
 
+	//mrdomek Why: Determine if a Controller is actively providing ACTIVE_POWER_LIMIT.
+	private static final long CONTROLLER_STALE_MS = 15_000L;
+	private volatile long lastActivePowerLimitUpdateMs = 0L;
+
 	// Selected microinverter number (1..99); used to shift the read register block.
 	private int microinverterNumber = 1;
 
@@ -208,6 +212,26 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		this.updateStaticPowerLimitsFromModel();
 	}
 
+	@org.osgi.service.component.annotations.Modified
+	private void modified(Config config) {
+		this.config = config;
+
+		// Konfigurierte Phase ins Channel-Model schreiben
+		this.channel(PvInverterHoymilesHMSHMT.ChannelId.CONFIGURED_PHASE) //
+				.setNextValue(config.phase().name());
+
+		this.updateStaticPowerLimitsFromModel();
+
+		//mrdomek Why: ensure topology refresh happens immediately after config changes (e.g. MI number).
+		this.lastTopologyRefreshMs = 0L;
+
+		//mrdomek Why: force safe init on next topology-ready state (e.g. minPercent).
+		this.lastInitSignature = null;
+
+		//mrdomek Why: ensure next cycle writes the new default percent even if handler caches/rate-limits.
+		this.powerLimitHandler.reset();
+	}
+	
 	@Deactivate
 	protected void deactivate() {
 		super.deactivate();
@@ -331,7 +355,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 				this.config.pv6ModulePeakPowerW());
 
 		// Update alarm/status summary channel (now per-register, not OR-combined)
-		updateAlarmSummary();
+		updateAlarmSummary(pTotal);
 
 		// Health-State (Ampel) aus Status- und Alarm-Register ableiten (night-mode aware)
 		updateHealthFromStatusAndAlarms(pTotal);
@@ -355,6 +379,8 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 	@Override
 	public void setActivePowerLimit(Integer power) throws OpenemsNamedException {
 		final Integer normalized = (power == null) ? null : Integer.valueOf(Math.max(0, power.intValue()));
+
+		this.lastActivePowerLimitUpdateMs = System.currentTimeMillis();
 
 		// For visibility in standard channels + debug log
 		this.channel(ManagedSymmetricPvInverter.ChannelId.ACTIVE_POWER_LIMIT).setNextValue(normalized);
@@ -399,6 +425,22 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 			targetLimitW = Integer.valueOf(((Number) opt.get()).intValue());
 		}
 
+		final int defaultPercent = (this.config != null) ? this.config.defaultPowerPercent() : 100;
+		if (this.config != null && this.config.debugMode()) {
+			this.logInfo(this.log, "PowerLimit: defaultPercent from config = " + defaultPercent
+					+ " (componentId=" + this.id() + ")");
+		}
+
+
+		final long ageMs = (this.lastActivePowerLimitUpdateMs > 0L)
+				? (now - this.lastActivePowerLimitUpdateMs)
+				: Long.MAX_VALUE;
+		final boolean controllerFresh = ageMs <= CONTROLLER_STALE_MS;
+		if (!controllerFresh) {
+			//mrdomek Why: avoid using stale limits if the controller stopped running.
+			targetLimitW = null;
+		}
+
 		// Mirror for UI/debug
 		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_LIMIT_ACTIVE_POWER_W).setNextValue(targetLimitW);
 
@@ -414,6 +456,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
 		this.powerLimitHandler.applyMpptScaled(
 				targetLimitW,
+				defaultPercent,
 				effectiveMaxW,
 				minPercent,
 				mpptActive,
@@ -526,8 +569,8 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		Integer status = null;
 
 		// Read status code
-		Optional<?> statusOpt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_STATUS_CODE)
-				.value()
+		Optional<?> statusOpt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_STATUS_CODE) //
+				.value() //
 				.asOptional();
 		if (statusOpt.isPresent() && statusOpt.get() instanceof Number) {
 			status = ((Number) statusOpt.get()).intValue();
@@ -580,13 +623,20 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
 		final boolean hasAlarm = HoymilesMi1StateLogic.hasAnyAlarm(alarm1, alarm2, alarm3, alarm4, alarm5, alarm6);
 
-		// OpenEMS Level-channels (used by core to compute component STATE)
-		final boolean fault = HoymilesMi1StateLogic.isFault(hasData, totalPowerW, status, alarm1, alarm2, alarm3, alarm4, alarm5, alarm6);
-		final boolean warning = HoymilesMi1StateLogic.isWarning(hasData, totalPowerW, status, alarm1, alarm2, alarm3, alarm4, alarm5, alarm6);
+		final DeviceModel model = (this.config != null) ? this.config.deviceModel() : null;
+		final int inputChannels = (model != null) ? model.getInputChannels() : 6;
+
+		final boolean[] pvInstalled = this.buildPvInstalledFlagsFromConfig();
+
+		final HoymilesMi1StateLogic.AlarmClassification cls = HoymilesMi1StateLogic.classify(hasData, totalPowerW, status, inputChannels,
+				pvInstalled, alarm1, alarm2, alarm3, alarm4, alarm5, alarm6);
+
+		//mrdomek Why: RunState/Health must only depend on FAULT/WARNING, while INFO/IGNORED remain visible for diagnostics.
+		final boolean fault = cls.hasFault;
+		final boolean warning = cls.hasWarning;
 
 		final String health = HoymilesMi1StateLogic.toHealthState(hasData, fault, warning);
 
-		// Info channels for UI/debug
 		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_HAS_ALARM).setNextValue(hasAlarm);
 		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_HEALTH_STATE).setNextValue(health);
 
@@ -629,7 +679,29 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		return active;
 	}
 
+	private boolean[] buildPvInstalledFlagsFromConfig() {
+		final boolean[] pvInstalled = new boolean[6];
 
+		//mrdomek Why: If config is not available, be conservative (treat PV inputs as installed to avoid hiding real issues).
+		if (this.config == null) {
+			for (int i = 0; i < pvInstalled.length; i++) {
+				pvInstalled[i] = true;
+			}
+			return pvInstalled;
+		}
+
+		//mrdomek Why: pvPeak==0 is our explicit signal "no module connected", so PVx_NO_INPUT becomes IGNORED.
+		pvInstalled[0] = this.config.pv1ModulePeakPowerW() > 0;
+		pvInstalled[1] = this.config.pv2ModulePeakPowerW() > 0;
+		pvInstalled[2] = this.config.pv3ModulePeakPowerW() > 0;
+		pvInstalled[3] = this.config.pv4ModulePeakPowerW() > 0;
+		pvInstalled[4] = this.config.pv5ModulePeakPowerW() > 0;
+		pvInstalled[5] = this.config.pv6ModulePeakPowerW() > 0;
+
+		return pvInstalled;
+	}
+
+	
 	private static String interpretHoymilesStatus(int totalPower, int rawStatusCode, int alarm1, int alarm2, int alarm3, int alarm4, int alarm5,
 			int alarm6) {
 		return HoymilesMi1StateLogic.interpretHoymilesStatus(totalPower, rawStatusCode, alarm1, alarm2, alarm3, alarm4, alarm5, alarm6);
@@ -656,23 +728,88 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 				.setNextValue(Integer.valueOf(sMaxVa));
 	}
 
-	private void updateAlarmSummary() {
-		// Read all relevant 16-bit words (treat missing/null as 0)
-		int status = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_STATUS_CODE);
-		int alarm1 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM1_CODE);
-		int alarm2 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM2_CODE);
-		int alarm3 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM3_CODE);
-		int alarm4 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM4_CODE);
-		int alarm5 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM5_CODE);
-		int alarm6 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM6_CODE);
+	private void updateAlarmSummary(int totalPowerW) {
+		boolean hasData = false;
+		Integer status = null;
+
+		Optional<?> statusOpt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_STATUS_CODE).value().asOptional();
+		if (statusOpt.isPresent() && statusOpt.get() instanceof Number) {
+			status = ((Number) statusOpt.get()).intValue();
+			hasData = true;
+		}
+
+		int alarm1 = 0;
+		int alarm2 = 0;
+		int alarm3 = 0;
+		int alarm4 = 0;
+		int alarm5 = 0;
+		int alarm6 = 0;
+
+		Optional<?> a1 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM1_CODE).value().asOptional();
+		if (a1.isPresent() && a1.get() instanceof Number) {
+			alarm1 = ((Number) a1.get()).intValue();
+			hasData = true;
+		}
+
+		Optional<?> a2 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM2_CODE).value().asOptional();
+		if (a2.isPresent() && a2.get() instanceof Number) {
+			alarm2 = ((Number) a2.get()).intValue();
+			hasData = true;
+		}
+
+		Optional<?> a3 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM3_CODE).value().asOptional();
+		if (a3.isPresent() && a3.get() instanceof Number) {
+			alarm3 = ((Number) a3.get()).intValue();
+			hasData = true;
+		}
+
+		Optional<?> a4 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM4_CODE).value().asOptional();
+		if (a4.isPresent() && a4.get() instanceof Number) {
+			alarm4 = ((Number) a4.get()).intValue();
+			hasData = true;
+		}
+
+		Optional<?> a5 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM5_CODE).value().asOptional();
+		if (a5.isPresent() && a5.get() instanceof Number) {
+			alarm5 = ((Number) a5.get()).intValue();
+			hasData = true;
+		}
+
+		Optional<?> a6 = this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM6_CODE).value().asOptional();
+		if (a6.isPresent() && a6.get() instanceof Number) {
+			alarm6 = ((Number) a6.get()).intValue();
+			hasData = true;
+		}
 
 		final DeviceModel model = (this.config != null) ? this.config.deviceModel() : null;
 		final int inputChannels = (model != null) ? model.getInputChannels() : 6;
 
-		String summary = HoymilesMi1StateLogic.buildAlarmSummary(status, inputChannels, alarm1, alarm2, alarm3, alarm4, alarm5, alarm6);
+		final boolean[] pvInstalled = this.buildPvInstalledFlagsFromConfig();
 
-		// Write to channel for UI
-		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM_SUMMARY).setNextValue(summary);
+		final HoymilesMi1StateLogic.AlarmClassification cls = HoymilesMi1StateLogic.classify(hasData, totalPowerW, status, inputChannels,
+				pvInstalled, alarm1, alarm2, alarm3, alarm4, alarm5, alarm6);
+
+		final String summaryFaultWarn = HoymilesMi1StateLogic.buildSummaryString(merge(cls.faultSummary, cls.warningSummary));
+		final String summaryInfo = HoymilesMi1StateLogic.buildSummaryString(cls.infoSummary);
+		final String summaryIgnored = HoymilesMi1StateLogic.buildSummaryString(cls.ignoredSummary);
+
+		// Write to channels for UI/diagnostics
+		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM_SUMMARY).setNextValue(summaryFaultWarn);
+
+		// NOTE: these two ChannelIds must be added to PvInverterHoymilesHMSHMT.ChannelId
+		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM_SUMMARY_INFO).setNextValue(summaryInfo);
+		this.channel(PvInverterHoymilesHMSHMT.ChannelId.MI1_ALARM_SUMMARY_IGNORED).setNextValue(summaryIgnored);
+	}
+
+	private static List<String> merge(List<String> a, List<String> b) {
+		final List<String> out = new ArrayList<>();
+		if (a != null) {
+			out.addAll(a);
+		}
+		if (b != null) {
+			out.addAll(b);
+		}
+		return out;
 	}
 
 	private int getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId channelId) {
@@ -702,7 +839,13 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 	private void updateWritePortFromDtuTopologyIfDue() {
 		// Only log/compute occasionally; tasks are LOW prio and values may update slowly.
 		final long now = System.currentTimeMillis();
-		if (now - this.lastTopologyRefreshMs < TOPOLOGY_REFRESH_INTERVAL_MS) {
+
+		final boolean forceRefresh = (this.selectedWritePort <= 0) //
+				|| (this.portOnOff == null) //
+				|| (this.portTempLimitActivePower == null);
+
+		//mrdomek Why: when writes are still blocked (startup / no topology yet), don't wait for the refresh interval.
+		if (!forceRefresh && (now - this.lastTopologyRefreshMs < TOPOLOGY_REFRESH_INTERVAL_MS)) {
 			return;
 		}
 		this.lastTopologyRefreshMs = now;

@@ -94,6 +94,12 @@ public @interface Config {
             description = "Nominal DC peak power of the PV module on input 6 in W (STC). "
                     + "Used to calculate relative loading in %. Set to 0 if unused.")
     int pv6ModulePeakPowerW() default 0;
+    
+    @AttributeDefinition(
+            name = "Default power limit [%]",
+            description = "Percent power limit that is applied if no Controller provides ACTIVE_POWER_LIMIT. "
+                    + "100 = no limit, 0 = OFF. This value is written to the DTU as percent.")
+    int defaultPowerPercent() default 100;
 
     @AttributeDefinition(
             name = "Use as production meter",

@@ -1,106 +1,159 @@
 package io.openems.edge.hoymiles.hms_hmt.pvinverter;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.List;
 
 /**
- * Bit-based view for Hoymiles status / alarm words.
+ * Word+Bit based view for Hoymiles MI alarm words.
  *
- * This enum is intentionally generic, because the exact meaning of each bit
- * is not yet documented. It can be used for:
- *
- * - Microinverter Status (register 0x3907)
- * - Alarm Code 1..6 (registers 0x3908..0x390D)
- *
- * Each enum constant represents one bit (0..15) in the 16-bit word.
+ * //mrdomek Why: This enum is the SINGLE place where we name bits and define a default severity.
+ * //mrdomek Future changes should be fast: adjust only the enum constants below.
+ * //mrdomek No scattered if/else across the component.
  */
 public enum HoymilesAlarmBit {
 
-    BIT0(0, "Bit 0 (reserved / unknown)"),
-    BIT1(1, "Bit 1 (reserved / unknown)"),
-    BIT2(2, "Bit 2 (reserved / unknown)"),
-    BIT3(3, "Bit 3 (reserved / unknown)"),
-    BIT4(4, "Bit 4 (reserved / unknown)"),
-    BIT5(5, "Bit 5 (reserved / unknown)"),
-    BIT6(6, "Bit 6 (reserved / unknown)"),
-    BIT7(7, "Bit 7 (reserved / unknown)"),
-    BIT8(8, "Bit 8 (reserved / unknown)"),
-    BIT9(9, "Bit 9 (reserved / unknown)"),
-    BIT10(10, "Bit 10 (reserved / unknown)"),
-    BIT11(11, "Bit 11 (reserved / unknown)"),
-    BIT12(12, "Bit 12 (reserved / unknown)"),
-    BIT13(13, "Bit 13 (reserved / unknown)"),
-    BIT14(14, "Bit 14 (reserved / unknown)"),
-    BIT15(15, "Bit 15 (reserved / unknown)");
+	/*
+	 * ---------------------------
+	 * Known / named bits (clear names)
+	 * ---------------------------
+	 */
 
-    private final int bitIndex;
-    private final String description;
+	// Alarm3 (register 0x390A)
+	ALARM3_MPPT_A_UNDERVOLTAGE_PV1_PV2(3, 12, Severity.FAULT, "MPPT A undervoltage (PV1/PV2)"),
+	ALARM3_MPPT_B_UNDERVOLTAGE_PV3_PV4(3, 13, Severity.FAULT, "MPPT B undervoltage (PV3/PV4)"),
+	ALARM3_MPPT_C_UNDERVOLTAGE_PV5_PV6(3, 14, Severity.FAULT, "MPPT C undervoltage (PV5/PV6)"),
 
-    private HoymilesAlarmBit(int bitIndex, String description) {
-        this.bitIndex = bitIndex;
-        this.description = description;
-    }
+	// Alarm4 (register 0x390B)
+	ALARM4_PV1_NO_INPUT(4, 2, Severity.WARNING, "PV1 no input"),
+	ALARM4_PV2_NO_INPUT(4, 3, Severity.WARNING, "PV2 no input"),
+	ALARM4_PV3_NO_INPUT(4, 4, Severity.WARNING, "PV3 no input"),
+	ALARM4_PV4_NO_INPUT(4, 5, Severity.WARNING, "PV4 no input"),
+	ALARM4_PV5_NO_INPUT(4, 6, Severity.WARNING, "PV5 no input"),
+	ALARM4_PV6_NO_INPUT(4, 7, Severity.WARNING, "PV6 no input"),
 
-    /**
-     * Zero-based bit index inside the 16-bit status/alarm word.
-     */
-    public int bitIndex() {
-        return this.bitIndex;
-    }
+	/*
+	 * ---------------------------
+	 * Generic bits (fallback for unknown meanings)
+	 * ---------------------------
+	 *
+	 * These are NOT tied to a specific alarm word.
+	 * They are used to represent unknown bits in a word while still keeping the output consistent.
+	 */
+	BIT0_GENERIC(0, 0, Severity.FAULT, "Generic bit 0 (unknown)"),
+	BIT1_GENERIC(0, 1, Severity.FAULT, "Generic bit 1 (unknown)"),
+	BIT2_GENERIC(0, 2, Severity.FAULT, "Generic bit 2 (unknown)"),
+	BIT3_GENERIC(0, 3, Severity.FAULT, "Generic bit 3 (unknown)"),
+	BIT4_GENERIC(0, 4, Severity.FAULT, "Generic bit 4 (unknown)"),
+	BIT5_GENERIC(0, 5, Severity.FAULT, "Generic bit 5 (unknown)"),
+	BIT6_GENERIC(0, 6, Severity.FAULT, "Generic bit 6 (unknown)"),
+	BIT7_GENERIC(0, 7, Severity.FAULT, "Generic bit 7 (unknown)"),
+	BIT8_GENERIC(0, 8, Severity.FAULT, "Generic bit 8 (unknown)"),
+	BIT9_GENERIC(0, 9, Severity.FAULT, "Generic bit 9 (unknown)"),
+	BIT10_GENERIC(0, 10, Severity.FAULT, "Generic bit 10 (unknown)"),
+	BIT11_GENERIC(0, 11, Severity.FAULT, "Generic bit 11 (unknown)"),
+	BIT12_GENERIC(0, 12, Severity.FAULT, "Generic bit 12 (unknown)"),
+	BIT13_GENERIC(0, 13, Severity.FAULT, "Generic bit 13 (unknown)"),
+	BIT14_GENERIC(0, 14, Severity.FAULT, "Generic bit 14 (unknown)"),
+	BIT15_GENERIC(0, 15, Severity.FAULT, "Generic bit 15 (unknown)");
 
-    /**
-     * Human-readable placeholder description.
-     * Can be refined later once the protocol is fully known.
-     */
-    public String description() {
-        return this.description;
-    }
+	public enum Severity {
+		FAULT, WARNING, INFO, IGNORED;
+	}
 
-    /**
-     * Returns true if this bit is set in the given status/alarm word.
-     *
-     * @param code 16-bit status / alarm word
-     * @return true if the corresponding bit is set
-     */
-    public boolean isSet(int code) {
-        return (code & (1 << this.bitIndex)) != 0;
-    }
+	private final int alarmWordIndex; // 1..6 for specific, 0 for generic
+	private final int bitIndex; // 0..15
+	private final Severity defaultSeverity;
+	private final String description;
 
-    /**
-     * Decode all set bits from a given 16-bit status/alarm word.
-     *
-     * @param code 16-bit status / alarm word (0..65535)
-     * @return EnumSet of all bits that are set; may be empty
-     */
-    public static EnumSet<HoymilesAlarmBit> fromCode(int code) {
-        EnumSet<HoymilesAlarmBit> result = EnumSet.noneOf(HoymilesAlarmBit.class);
-        for (HoymilesAlarmBit bit : HoymilesAlarmBit.values()) {
-            if (bit.isSet(code)) {
-                result.add(bit);
-            }
-        }
-        return result;
-    }
+	private HoymilesAlarmBit(int alarmWordIndex, int bitIndex, Severity defaultSeverity, String description) {
+		this.alarmWordIndex = alarmWordIndex;
+		this.bitIndex = bitIndex;
+		this.defaultSeverity = defaultSeverity;
+		this.description = description;
+	}
 
-    /**
-     * Compact string representation of all set bits, e.g. "BIT0,BIT3,BIT7".
-     * Returns "NO_ALARM" if no bit is set.
-     *
-     * This is handy for debugLog(), log output or a simple UI string channel.
-     */
-    public static String toShortString(int code) {
-        EnumSet<HoymilesAlarmBit> set = fromCode(code);
-        if (set.isEmpty()) {
-            return "NO_ALARM";
-        }
-        StringBuilder sb = new StringBuilder();
-        boolean first = true;
-        for (HoymilesAlarmBit bit : set) {
-            if (!first) {
-                sb.append(',');
-            }
-            sb.append(bit.name());
-            first = false;
-        }
-        return sb.toString();
-    }
+	public int alarmWordIndex() {
+		return this.alarmWordIndex;
+	}
+
+	public int bitIndex() {
+		return this.bitIndex;
+	}
+
+	public Severity defaultSeverity() {
+		return this.defaultSeverity;
+	}
+
+	public String description() {
+		return this.description;
+	}
+
+	public boolean isSet(int code) {
+		return ((code & 0xFFFF) & (1 << this.bitIndex)) != 0;
+	}
+
+	public boolean isGeneric() {
+		return this.alarmWordIndex == 0;
+	}
+
+	/**
+	 * Returns all named bits for a specific alarm word that are set in the given word value.
+	 *
+	 * @param alarmWordIndex 1..6
+	 * @param code           16-bit alarm word
+	 */
+	public static EnumSet<HoymilesAlarmBit> fromAlarmWord(int alarmWordIndex, int code) {
+		EnumSet<HoymilesAlarmBit> result = EnumSet.noneOf(HoymilesAlarmBit.class);
+		for (HoymilesAlarmBit bit : HoymilesAlarmBit.values()) {
+			if (bit.isGeneric()) {
+				continue;
+			}
+			if (bit.alarmWordIndex != alarmWordIndex) {
+				continue;
+			}
+			if (bit.isSet(code)) {
+				result.add(bit);
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * Returns a list of unknown bit positions (0..15) that are set in a word but not covered by a named enum constant.
+	 *
+	 * //mrdomek Why: We want explicit visibility for unknown bits while keeping a stable naming scheme.
+	 */
+	public static List<Integer> unknownSetBitsInWord(int alarmWordIndex, int code) {
+		final int v = code & 0xFFFF;
+
+		int knownMask = 0;
+		for (HoymilesAlarmBit bit : HoymilesAlarmBit.values()) {
+			if (bit.isGeneric()) {
+				continue;
+			}
+			if (bit.alarmWordIndex != alarmWordIndex) {
+				continue;
+			}
+			knownMask |= (1 << bit.bitIndex);
+		}
+
+		final int unknown = v & ~knownMask;
+		List<Integer> out = new ArrayList<>();
+		for (int b = 0; b <= 15; b++) {
+			if ((unknown & (1 << b)) != 0) {
+				out.add(Integer.valueOf(b));
+			}
+		}
+		return out;
+	}
+
+	public static HoymilesAlarmBit genericBit(int bitIndex) {
+		for (HoymilesAlarmBit bit : HoymilesAlarmBit.values()) {
+			if (bit.isGeneric() && bit.bitIndex == bitIndex) {
+				return bit;
+			}
+		}
+		return null;
+	}
 }
