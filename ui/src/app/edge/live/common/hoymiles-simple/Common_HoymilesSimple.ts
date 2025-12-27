@@ -45,10 +45,10 @@ export class Common_HoymilesSimpleComponent {
      * Channel-Namen ggf. an deine Edge-Implementierung anpassen.
      */
     public inputs: DcInputConfig[] = [
-        { label: "PV1", utilizationChannel: "Mi1Pv1UtilizationPercent" },
-        { label: "PV2", utilizationChannel: "Mi1Pv2UtilizationPercent" },
-        { label: "PV3", utilizationChannel: "Mi1Pv3UtilizationPercent" },
-        { label: "PV4", utilizationChannel: "Mi1Pv4UtilizationPercent" },
+        { label: "PV1", utilizationChannel: "SelMiPv1UtilizationPercent" },
+        { label: "PV2", utilizationChannel: "SelMiPv2UtilizationPercent" },
+        { label: "PV3", utilizationChannel: "SelMiPv3UtilizationPercent" },
+        { label: "PV4", utilizationChannel: "SelMiPv4UtilizationPercent" },
         // bei Bedarf:
         // { label: "PV5", utilizationChannel: "MI1_PV5_UTILIZATION_PERCENT" },
         // { label: "PV6", utilizationChannel: "MI1_PV6_UTILIZATION_PERCENT" },
