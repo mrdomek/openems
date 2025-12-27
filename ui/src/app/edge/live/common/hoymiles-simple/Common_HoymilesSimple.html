@@ -1,7 +1,22 @@
-<oe-flat-widget (click)="presentModal()" [icon]="{ name: 'sunny-outline' }" [title]="'Hoymiles DC-Inputs'">
+<oe-flat-widget (click)="presentModal()" [icon]="{ name: 'sunny-outline' }" [title]="title">
 
+  <!-- Seriennummer -->
+  <oe-flat-widget-line [name]="'Serial'" [channelAddress]="getSerialAddress()">
+  </oe-flat-widget-line>
+
+  <!-- AC-Gesamtleistung -->
+  <oe-flat-widget-line [name]="'AC Power [W]'" [channelAddress]="getAcPowerAddress()">
+  </oe-flat-widget-line>
+
+  <oe-flat-widget-horizontal-line></oe-flat-widget-horizontal-line>
+
+  <!-- DC-Eingänge: je String Utilization + Power + Balken -->
   <ng-container *ngFor="let input of inputs">
-    <oe-flat-widget-line [name]="input.label" [channelAddress]="getUtilizationAddress(input)">
+
+    <oe-flat-widget-line [name]="input.label + ' Utilization [%]'" [channelAddress]="getUtilizationAddress(input)">
+    </oe-flat-widget-line>
+
+    <oe-flat-widget-line [name]="input.label + ' Power [W]'" [channelAddress]="getPowerAddress(input)">
     </oe-flat-widget-line>
 
     <oe-flat-widget-percentagebar [channelAddress]="getUtilizationAddress(input)">
@@ -9,5 +24,15 @@
 
     <oe-flat-widget-horizontal-line></oe-flat-widget-horizontal-line>
   </ng-container>
+
+  <!-- Alarme -->
+  <oe-flat-widget-line [name]="'Alarm Summary'" [channelAddress]="getAlarmSummaryAddress()">
+  </oe-flat-widget-line>
+
+  <oe-flat-widget-line [name]="'Alarm Info'" [channelAddress]="getAlarmSummaryInfoAddress()">
+  </oe-flat-widget-line>
+
+  <oe-flat-widget-line [name]="'Alarm Ignored'" [channelAddress]="getAlarmSummaryIgnoredAddress()">
+  </oe-flat-widget-line>
 
 </oe-flat-widget>

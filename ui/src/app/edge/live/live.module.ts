@@ -12,13 +12,12 @@ import { SharedModule } from "./../../shared/shared.module";
 import { Common_Autarchy } from "./common/autarchy/Common_Autarchy";
 import { CommonConsumption } from "./common/consumption/common-consumption";
 import { Common_Grid } from "./common/grid/Common_Grid";
+// Hoymiles-Widget (Standalone-Komponente)
 import { Common_HoymilesSimpleComponent } from "./common/hoymiles-simple/Common_HoymilesSimple";
 import { Common_Production } from "./common/production/Common_Production";
 import { CommonSelfconsumption } from "./common/selfconsumption/common-selfconsumption";
 import { StorageLiveModule } from "./common/storage/storage.module";
 import { WeatherModule } from "./common/weather/weather.module";
-
-// NEU: standalone-Komponente unseres Widgets
 
 import { Controller_ChannelthresholdComponent } from "./Controller/Channelthreshold/Channelthreshold";
 import { Controller_ChpSocComponent } from "./Controller/ChpSoc/ChpSoc";
@@ -66,12 +65,10 @@ import { ModalComponent as EvcsClusterApiModalComponent } from "./Multiple/evcs-
         Common_Autarchy,
         CommonConsumption,
         Common_Grid,
+        Common_HoymilesSimpleComponent,
         Common_Production,
         CommonSelfconsumption,
         WeatherModule,
-
-        // NEU: standalone-Widget
-        Common_HoymilesSimpleComponent,
 
         // Controller-Module
         Controller_Api_ModbusTcp,

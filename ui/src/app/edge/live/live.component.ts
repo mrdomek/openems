@@ -25,6 +25,9 @@ export class LiveComponent implements OnDestroy {
     protected showRefreshDragDown: boolean = false;
     protected showNewFooter: boolean = false;
 
+    //mrdomek Primary match: factoryId of the Hoymiles driver
+    protected readonly HOYMILES_FACTORY_ID: string = "io.openems.edge.pvinverter.hoymiles";
+
     private stopOnDestroy: Subject<void> = new Subject<void>();
     private interval: ReturnType<typeof setInterval> | undefined;
 
@@ -52,9 +55,39 @@ export class LiveComponent implements OnDestroy {
         });
     }
 
+    //mrdomek All componentIds that use the Hoymiles driver get one widget.
+    //mrdomek If no exact factoryId match is found, we fall back to IDs starting with "pvinverter".
+    public get hoymilesComponents(): string[] {
+        const cfg: any = this.config;
+        if (!cfg || !cfg.components) {
+            return [];
+        }
+
+        const components = cfg.components as Record<string, { factoryId?: string }>;
+        const target = this.HOYMILES_FACTORY_ID.toLowerCase();
+
+        const factoryMatches = Object.keys(components).filter((componentId) => {
+            const factoryId = components[componentId]?.factoryId;
+            return typeof factoryId === "string" && factoryId.toLowerCase() === target;
+        });
+
+        if (factoryMatches.length > 0) {
+            return factoryMatches;
+        }
+
+        //mrdomek Fallback: treat pvInverter* components as Hoymiles, useful while driver naming is still evolving.
+        const fallbackMatches = Object.keys(components).filter((componentId) =>
+            componentId.toLowerCase().startsWith("pvinverter"),
+        );
+
+        return fallbackMatches;
+    }
+
     public ionViewWillEnter() {
         if (this.widgets?.list) {
-            this.showNewFooter = this.widgets?.list.filter(item => item.name == "Evse.Controller.Single" || item.name == "Controller.IO.Heating.Room")?.length > 0;
+            this.showNewFooter = this.widgets?.list
+                .filter(item => item.name == "Evse.Controller.Single" || item.name == "Controller.IO.Heating.Room")
+                ?.length > 0;
         }
     }
 
@@ -68,7 +101,8 @@ export class LiveComponent implements OnDestroy {
         this.stopOnDestroy.complete();
     }
 
-    protected handleRefresh: (ev: RefresherCustomEvent) => void = (ev: RefresherCustomEvent) => this.dataService.refresh(ev);
+    protected handleRefresh: (ev: RefresherCustomEvent) => void =
+        (ev: RefresherCustomEvent) => this.dataService.refresh(ev);
 
     protected checkIfRefreshNeeded() {
         this.interval = setInterval(async () => {

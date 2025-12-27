@@ -1,25 +1,23 @@
 import { CommonModule } from "@angular/common";
-import { Component } from "@angular/core";
+import { Component, Input } from "@angular/core";
 import { IonicModule } from "@ionic/angular";
 import { SharedModule } from "../../../../shared/shared.module";
 
 interface DcInputConfig {
     label: string;
     utilizationChannel: string;
+    powerChannel: string;
 }
 
 /**
- * Einfaches Common-Widget für genau einen Hoymiles-Wechselrichter.
+ * Einfaches Flat-Widget für einen Hoymiles-Mikrowechselrichter.
  *
- * Darstellung:
- * - Kachel mit Titel
- * - Für jeden DC-Eingang:
- *   - eine Zeile mit Name + Prozentwert
- *   - ein Prozent-Balken (oe-flat-widget-percentagebar)
- *
- * Datenquelle:
- * - channelAddress = <baseComponentId>/<ChannelName>
- *   z.B. "pvinverter0/MI1_PV1_UTILIZATION_PERCENT"
+ * - componentId: OpenEMS-Component-ID (z.B. "pvInverter0")
+ * - nutzt SelMi*-Channels:
+ *   - SelMiPv1UtilizationPercent, SelMiPv1PowerW, ...
+ *   - SelMiSerial
+ *   - SelMiActivePowerW
+ *   - SelMiAlarmSummary, SelMiAlarmSummaryInfo, SelMiAlarmSummaryIgnored
  */
 @Component({
     standalone: true,
@@ -27,46 +25,89 @@ interface DcInputConfig {
     imports: [
         CommonModule,
         IonicModule,
-        SharedModule, // bringt oe-flat-widget & Co. mit
+        SharedModule,
     ],
     templateUrl: "./Common_HoymilesSimple.html",
     styleUrls: ["./Common_HoymilesSimple.scss"],
 })
 export class Common_HoymilesSimpleComponent {
 
-    /**
-     * Component-ID deines Hoymiles-Wechselrichters in der EdgeConfig.
-     * HIER deine reale ID eintragen, z.B. "pvinverter0".
-     */
-    public baseComponentId: string = "pvInverter0";
+    @Input()
+    public componentId: string = "pvInverter0";
 
-    /**
-     * DC-Eingänge, die angezeigt werden sollen.
-     * Channel-Namen ggf. an deine Edge-Implementierung anpassen.
-     */
+    @Input()
+    public title: string = "Hoymiles DC-Inputs";
+
     public inputs: DcInputConfig[] = [
-        { label: "PV1", utilizationChannel: "SelMiPv1UtilizationPercent" },
-        { label: "PV2", utilizationChannel: "SelMiPv2UtilizationPercent" },
-        { label: "PV3", utilizationChannel: "SelMiPv3UtilizationPercent" },
-        { label: "PV4", utilizationChannel: "SelMiPv4UtilizationPercent" },
-        // bei Bedarf:
-        // { label: "PV5", utilizationChannel: "MI1_PV5_UTILIZATION_PERCENT" },
-        // { label: "PV6", utilizationChannel: "MI1_PV6_UTILIZATION_PERCENT" },
+        {
+            label: "PV1",
+            utilizationChannel: "SelMiPv1UtilizationPercent",
+            powerChannel: "SelMiPv1PowerW",
+        },
+        {
+            label: "PV2",
+            utilizationChannel: "SelMiPv2UtilizationPercent",
+            powerChannel: "SelMiPv2PowerW",
+        },
+        {
+            label: "PV3",
+            utilizationChannel: "SelMiPv3UtilizationPercent",
+            powerChannel: "SelMiPv3PowerW",
+        },
+        {
+            label: "PV4",
+            utilizationChannel: "SelMiPv4UtilizationPercent",
+            powerChannel: "SelMiPv4PowerW",
+        },
+        // Bei Bedarf: PV5/PV6 ergänzen
+        // {
+        //     label: "PV5",
+        //     utilizationChannel: "SelMiPv5UtilizationPercent",
+        //     powerChannel: "SelMiPv5PowerW",
+        // },
+        // {
+        //     label: "PV6",
+        //     utilizationChannel: "SelMiPv6UtilizationPercent",
+        //     powerChannel: "SelMiPv6PowerW",
+        // },
     ];
 
-    /**
-     * Hilfsfunktion für das Template:
-     * baut aus baseComponentId und Channel-Namen einen gültigen channelAddress-String.
-     */
+    private readonly serialChannel: string = "SelMiSerial";
+    private readonly acPowerChannel: string = "SelMiActivePowerW";
+
+    private readonly alarmSummaryChannel: string = "SelMiAlarmSummary";
+    private readonly alarmSummaryInfoChannel: string = "SelMiAlarmSummaryInfo";
+    private readonly alarmSummaryIgnoredChannel: string = "SelMiAlarmSummaryIgnored";
+
     public getUtilizationAddress(input: DcInputConfig): string {
-        return `${this.baseComponentId}/${input.utilizationChannel}`;
+        return `${this.componentId}/${input.utilizationChannel}`;
     }
 
-    /**
-     * Platzhalter für Detail-Ansicht.
-     * Nächster Schritt: richtiges Modal-Widget nach OpenEMS-Pattern.
-     */
+    public getPowerAddress(input: DcInputConfig): string {
+        return `${this.componentId}/${input.powerChannel}`;
+    }
+
+    public getSerialAddress(): string {
+        return `${this.componentId}/${this.serialChannel}`;
+    }
+
+    public getAcPowerAddress(): string {
+        return `${this.componentId}/${this.acPowerChannel}`;
+    }
+
+    public getAlarmSummaryAddress(): string {
+        return `${this.componentId}/${this.alarmSummaryChannel}`;
+    }
+
+    public getAlarmSummaryInfoAddress(): string {
+        return `${this.componentId}/${this.alarmSummaryInfoChannel}`;
+    }
+
+    public getAlarmSummaryIgnoredAddress(): string {
+        return `${this.componentId}/${this.alarmSummaryIgnoredChannel}`;
+    }
+
     public presentModal(): void {
-        alert("Hoymiles-Details: hier bauen wir im nächsten Schritt ein Modal.");
+        alert(`Hoymiles-Details (${this.componentId}): hier kommt später ein Detail-Modal.`);
     }
 }

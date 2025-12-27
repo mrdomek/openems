@@ -66,9 +66,11 @@
 
             </ng-container>
 
-            <!-- NEU: Hoymiles Simple Widget – immer sichtbar, unabhängig von widgets.classes -->
-            <ion-col size="12" size-lg="6" class="ion-no-padding">
-              <Common_HoymilesSimple></Common_HoymilesSimple>
+            <!-- Hoymiles Widgets: dynamisch nach Anzahl Treiber-Instanzen -->
+
+            <ion-col *ngFor="let hmId of hoymilesComponents" size="12" size-lg="6" class="ion-no-padding">
+              <Common_HoymilesSimple [componentId]="hmId" [title]="'Hoymiles DC-Inputs (' + hmId + ')'">
+              </Common_HoymilesSimple>
             </ion-col>
 
             <!-- Widgets depending on the configuration of the OpenEMS Edge -->

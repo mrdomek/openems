@@ -4,3 +4,14 @@
 
 /* Optional kannst du hier später z.B. Abstände oder Farben anpassen.
    Die eigentliche Balken-Optik kommt vom oe-flat-widget-percentagebar. */
+
+.hoymiles-bar-pair {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+    margin-bottom: 0.5rem;
+}
+
+.hoymiles-bar {
+    flex: 1 1 0;
+}
