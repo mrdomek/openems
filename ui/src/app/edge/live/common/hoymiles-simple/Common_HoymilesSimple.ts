@@ -11,19 +11,6 @@ interface DcInputConfig {
     powerChannel: string;
 }
 
-/**
- * Einfaches Flat-Widget für einen Hoymiles-Mikrowechselrichter.
- *
- * - componentId: OpenEMS-Component-ID (z.B. "pvInverter0")
- * - nutzt SelMi*-Channels:
- *   - SelMiPv1UtilizationPercent, SelMiPv1PowerW, ...
- *   - SelMiSerial
- *   - SelMiActivePowerW
- *   - SelMiAlarmSummary, SelMiAlarmSummaryInfo, SelMiAlarmSummaryIgnored
- *
- * //mrdomek Pair sums (PV1+PV2, PV3+PV4, ...) are computed UI-side from CurrentData
- * //mrdomek to avoid introducing new Edge channels.
- */
 @Component({
     standalone: true,
     selector: "Common_HoymilesSimple",
@@ -44,26 +31,10 @@ export class Common_HoymilesSimpleComponent implements OnInit, OnDestroy {
     public title: string = "Hoymiles DC-Inputs";
 
     public inputs: DcInputConfig[] = [
-        {
-            label: "PV1",
-            utilizationChannel: "SelMiPv1UtilizationPercent",
-            powerChannel: "SelMiPv1PowerW",
-        },
-        {
-            label: "PV2",
-            utilizationChannel: "SelMiPv2UtilizationPercent",
-            powerChannel: "SelMiPv2PowerW",
-        },
-        {
-            label: "PV3",
-            utilizationChannel: "SelMiPv3UtilizationPercent",
-            powerChannel: "SelMiPv3PowerW",
-        },
-        {
-            label: "PV4",
-            utilizationChannel: "SelMiPv4UtilizationPercent",
-            powerChannel: "SelMiPv4PowerW",
-        },
+        { label: "PV1", utilizationChannel: "SelMiPv1UtilizationPercent", powerChannel: "SelMiPv1PowerW" },
+        { label: "PV2", utilizationChannel: "SelMiPv2UtilizationPercent", powerChannel: "SelMiPv2PowerW" },
+        { label: "PV3", utilizationChannel: "SelMiPv3UtilizationPercent", powerChannel: "SelMiPv3PowerW" },
+        { label: "PV4", utilizationChannel: "SelMiPv4UtilizationPercent", powerChannel: "SelMiPv4PowerW" },
     ];
 
     private readonly serialChannel: string = "SelMiSerial";
@@ -76,7 +47,7 @@ export class Common_HoymilesSimpleComponent implements OnInit, OnDestroy {
     //mrdomek Cache for live DC power values (W), aligned with this.inputs index.
     private powerValuesW: Array<number | null> = [];
 
-    //mrdomek Explicit subscriptions for PV power channels used in pair sums.
+    //mrdomek Explicit subscriptions for PV power channels used in sums.
     private subscribedPowerAddresses: ChannelAddress[] = [];
 
     private injector: Injector = inject(Injector);
@@ -88,19 +59,16 @@ export class Common_HoymilesSimpleComponent implements OnInit, OnDestroy {
     ) { }
 
     public ngOnInit(): void {
-        //mrdomek Initialize caches deterministically to avoid undefined states in templates.
+        //mrdomek Initialize caches deterministically.
         this.powerValuesW = this.inputs.map(() => null);
 
-        //mrdomek Subscribe to the required channels via the same DataService mechanism as AbstractFlatWidget.
         this.service.getCurrentEdge().then(edge => {
-            //mrdomek Build and subscribe only to the PV power channels required for pair sums.
             this.subscribedPowerAddresses = this.inputs.map(input =>
                 new ChannelAddress(this.componentId, input.powerChannel),
             );
 
             this.dataService.getValues(this.subscribedPowerAddresses, edge, this.componentId);
 
-            //mrdomek React to every CurrentData update and refresh our local power cache.
             this.subscription = effect(() => {
                 const currentData = this.dataService.currentValue();
                 this.onCurrentData(currentData);
@@ -109,7 +77,6 @@ export class Common_HoymilesSimpleComponent implements OnInit, OnDestroy {
     }
 
     public ngOnDestroy(): void {
-        //mrdomek Ensure we unsubscribe the channels we explicitly subscribed for pair sums.
         if (this.subscribedPowerAddresses.length > 0) {
             this.dataService.unsubscribeFromChannels(this.subscribedPowerAddresses);
         }
@@ -144,7 +111,6 @@ export class Common_HoymilesSimpleComponent implements OnInit, OnDestroy {
         return `${this.componentId}/${this.alarmSummaryIgnoredChannel}`;
     }
 
-    //mrdomek Returns the live sum of PV(i)+PV(i+1) based on cached CurrentData values.
     public getPairPowerSumW(evenIndex: number): number | null {
         const a = this.powerValuesW[evenIndex] ?? null;
         const b = this.powerValuesW[evenIndex + 1] ?? null;
@@ -155,15 +121,35 @@ export class Common_HoymilesSimpleComponent implements OnInit, OnDestroy {
         return (a ?? 0) + (b ?? 0);
     }
 
-    //mrdomek Converter for oe-flat-widget-line [converter]. Must not depend on "this",
-    //mrdomek because the line component calls converter(value) without binding a context.
-    public toWattString(value: any): string {
-        if (typeof value === "number" && Number.isFinite(value)) {
-            return Math.round(value).toString();
+    //mrdomek Sum of all DC inputs currently shown in this.inputs.
+    public getDcTotalPowerW(): number | null {
+        let any = false;
+        let sum = 0;
+
+        for (const v of this.powerValuesW) {
+            if (v != null) {
+                any = true;
+                sum += v;
+            }
         }
-        if (typeof value === "string") {
-            const n = Number(value);
-            return Number.isFinite(n) ? Math.round(n).toString() : "-";
+
+        return any ? sum : null;
+    }
+
+    public getMpptSumLabel(evenIndex: number): string {
+        const pairIndex = Math.floor(evenIndex / 2);
+        const letter = String.fromCharCode(65 + pairIndex);
+        return `MPPT ${letter} Sum`;
+    }
+
+    //mrdomek Converter used by oe-flat-widget-line; it must return a display string including the unit.
+    public toWattString(value: any): string {
+        const n = (typeof value === "number")
+            ? value
+            : (typeof value === "string" ? Number(value) : Number.NaN);
+
+        if (Number.isFinite(n)) {
+            return `${Math.round(n)} W`;
         }
         return "-";
     }
@@ -172,7 +158,6 @@ export class Common_HoymilesSimpleComponent implements OnInit, OnDestroy {
         alert(`Hoymiles-Details (${this.componentId}): hier kommt später ein Detail-Modal.`);
     }
 
-    //mrdomek Update cached PV power values from CurrentData snapshots.
     private onCurrentData(currentData: CurrentData): void {
         if (!currentData?.allComponents) {
             return;
@@ -185,7 +170,6 @@ export class Common_HoymilesSimpleComponent implements OnInit, OnDestroy {
         }
     }
 
-    //mrdomek Internal numeric conversion for caching and arithmetic.
     private toNumberOrNull(value: any): number | null {
         if (typeof value === "number" && Number.isFinite(value)) {
             return value;

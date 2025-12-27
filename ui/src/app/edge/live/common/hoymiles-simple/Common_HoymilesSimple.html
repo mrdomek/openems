@@ -1,72 +1,82 @@
-<oe-flat-widget (click)="presentModal()" [icon]="{ name: 'sunny-outline' }" [title]="title">
+<oe-flat-widget [title]="title">
+  <!-- mrdomek Click handling is implemented on a plain div to avoid relying on oe-flat-widget inputs -->
+  <div class="hm-click-area" role="button" tabindex="0" (click)="presentModal()" (keydown.enter)="presentModal()"
+    (keydown.space)="presentModal()">
+    <div class="hm-header">
+      <oe-flat-widget-line name="Serial" [channelAddress]="getSerialAddress()"></oe-flat-widget-line>
 
-  <oe-flat-widget-line [name]="'Serial'" [channelAddress]="getSerialAddress()">
-  </oe-flat-widget-line>
+      <oe-flat-widget-line class="hm-ac-line" name="AC Power" [channelAddress]="getAcPowerAddress()"
+        [converter]="toWattString"></oe-flat-widget-line>
 
-  <oe-flat-widget-line [name]="'AC Power [W]'" [channelAddress]="getAcPowerAddress()">
-  </oe-flat-widget-line>
+      <div class="hm-dc-total">
+        <div class="hm-dc-total-label">DC Total</div>
+        <div class="hm-dc-total-value">
+          {{ getDcTotalPowerW() === null ? "-" : (getDcTotalPowerW() | number:'1.0-0') }}
+          <span class="hm-unit">W</span>
+        </div>
+      </div>
+    </div>
 
-  <oe-flat-widget-horizontal-line></oe-flat-widget-horizontal-line>
+    <!-- mrdomek Table layout to force reliable separators -->
+    <div class="hm-table-wrap">
+      <table class="hm-table" aria-label="Hoymiles DC Inputs">
+        <colgroup>
+          <col class="hm-col-pv" />
+          <col class="hm-col-pv" />
+          <col class="hm-col-sum" />
+        </colgroup>
 
-  <ng-container *ngFor="let _ of inputs; let i = index">
-    <ng-container *ngIf="i % 2 === 0">
+        <tbody>
+          <ng-container *ngFor="let left of inputs; let i = index">
+            <tr *ngIf="i % 2 === 0" class="hm-tr">
 
-      <ion-grid class="ion-no-padding hm-pair-grid">
-        <ion-row class="ion-no-padding hm-pair-row">
+              <!-- PV left -->
+              <td class="hm-td hm-td-pv">
+                <div class="hm-pv-title">{{ inputs[i].label }}</div>
 
-          <ion-col size="6" class="ion-no-padding hm-col hm-col-left" *ngIf="inputs[i] as input1">
+                <!-- mrdomek Util (%) label removed; keep only the bar -->
+                <oe-flat-widget-percentagebar class="hm-bar"
+                  [channelAddress]="getUtilizationAddress(inputs[i])"></oe-flat-widget-percentagebar>
 
-            <oe-flat-widget-line [name]="input1.label + ' Utilization [%]'"
-              [channelAddress]="getUtilizationAddress(input1)">
-            </oe-flat-widget-line>
+                <oe-flat-widget-line name="Power" [channelAddress]="getPowerAddress(inputs[i])"
+                  [converter]="toWattString"></oe-flat-widget-line>
+              </td>
 
-            <div class="hm-bar">
-              <oe-flat-widget-percentagebar [channelAddress]="getUtilizationAddress(input1)">
-              </oe-flat-widget-percentagebar>
-            </div>
+              <!-- PV right -->
+              <td class="hm-td hm-td-pv">
+                <div class="hm-pv-title">{{ inputs[i + 1]?.label }}</div>
 
-            <oe-flat-widget-line [name]="input1.label + ' Power [W]'" [channelAddress]="getPowerAddress(input1)">
-            </oe-flat-widget-line>
+                <!-- mrdomek Util (%) label removed; keep only the bar -->
+                <oe-flat-widget-percentagebar class="hm-bar"
+                  [channelAddress]="getUtilizationAddress(inputs[i + 1])"></oe-flat-widget-percentagebar>
 
-          </ion-col>
+                <oe-flat-widget-line name="Power" [channelAddress]="getPowerAddress(inputs[i + 1])"
+                  [converter]="toWattString"></oe-flat-widget-line>
+              </td>
 
-          <ion-col size="6" class="ion-no-padding hm-col hm-col-right" *ngIf="inputs[i + 1] as input2">
+              <!-- MPPT Sum -->
+              <td class="hm-td hm-td-sum">
+                <div class="hm-sum-title">{{ getMpptSumLabel(i) }}</div>
 
-            <oe-flat-widget-line [name]="input2.label + ' Utilization [%]'"
-              [channelAddress]="getUtilizationAddress(input2)">
-            </oe-flat-widget-line>
+                <div class="hm-sum-value">
+                  {{ getPairPowerSumW(i) === null ? "-" : (getPairPowerSumW(i) | number:'1.0-0') }}
+                  <span class="hm-unit">W</span>
+                </div>
+              </td>
 
-            <div class="hm-bar">
-              <oe-flat-widget-percentagebar [channelAddress]="getUtilizationAddress(input2)">
-              </oe-flat-widget-percentagebar>
-            </div>
+            </tr>
+          </ng-container>
+        </tbody>
+      </table>
+    </div>
 
-            <oe-flat-widget-line [name]="input2.label + ' Power [W]'" [channelAddress]="getPowerAddress(input2)">
-            </oe-flat-widget-line>
+    <div class="hm-alarms">
+      <oe-flat-widget-line name="Alarm Summary" [channelAddress]="getAlarmSummaryAddress()"></oe-flat-widget-line>
 
-          </ion-col>
+      <oe-flat-widget-line name="Alarm Info" [channelAddress]="getAlarmSummaryInfoAddress()"></oe-flat-widget-line>
 
-        </ion-row>
-      </ion-grid>
-
-      <!-- mrdomek Pair sum line (PV1+PV2, PV3+PV4, ...) computed from CurrentData -->
-      <oe-flat-widget-line *ngIf="inputs[i] && inputs[i + 1]"
-        [name]="inputs[i].label + '+' + inputs[i + 1].label + ' Sum [W]'" [value]="getPairPowerSumW(i)"
-        [converter]="toWattString">
-      </oe-flat-widget-line>
-
-      <oe-flat-widget-horizontal-line></oe-flat-widget-horizontal-line>
-
-    </ng-container>
-  </ng-container>
-
-  <oe-flat-widget-line [name]="'Alarm Summary'" [channelAddress]="getAlarmSummaryAddress()">
-  </oe-flat-widget-line>
-
-  <oe-flat-widget-line [name]="'Alarm Info'" [channelAddress]="getAlarmSummaryInfoAddress()">
-  </oe-flat-widget-line>
-
-  <oe-flat-widget-line [name]="'Alarm Ignored'" [channelAddress]="getAlarmSummaryIgnoredAddress()">
-  </oe-flat-widget-line>
-
+      <oe-flat-widget-line name="Alarm Ignored"
+        [channelAddress]="getAlarmSummaryIgnoredAddress()"></oe-flat-widget-line>
+    </div>
+  </div>
 </oe-flat-widget>
