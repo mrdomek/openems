@@ -92,6 +92,9 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 	private final HoymilesPowerLimitHandler powerLimitHandler =
 			new HoymilesPowerLimitHandler(5_000L);
 
+	//mrdomek Why: Detect MI wake-up (OFF/IDLE->PRODUCING) to re-apply OpenEMS power limit after nightly shutdown.
+	private HoymilesMiStateLogic.OperationMode lastOperationMode = null;
+	
 	// Selected microinverter number (1..99); used to shift the read register block.
 	private int microinverterNumber = 1;
 
@@ -368,6 +371,18 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		final HoymilesMiStateLogic.OperationMode op = HoymilesMiStateLogic.deriveOperationMode(status, Integer.valueOf(pTotal));
 		//mrdomek Why: Expose the derived MI mode as a pure UI signal; do not mix with Alarm/Health/Runstate.
 		this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_OPERATION_MODE).setNextValue(op != null ? op.name() : null);
+
+		if (op != null) {
+			if (op == HoymilesMiStateLogic.OperationMode.PRODUCING
+					&& this.lastOperationMode != HoymilesMiStateLogic.OperationMode.PRODUCING
+					&& this.config != null && !this.config.readOnly()
+					&& this.portTempLimitActivePower != null) {
+				//mrdomek Why: MI may restart with the Hoymiles Cloud limit; force a re-write on first PRODUCING after OFF/IDLE.
+				this.powerLimitHandler.reset();
+			}
+			//mrdomek Why: Keep the last stable mode to avoid retriggering on cycles with missing/unknown inputs.
+			this.lastOperationMode = op;
+		}
 
 		// Build interpreted status using full status+alarm context (not just hasAlarm)
 		final int alarm1 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM1_CODE);

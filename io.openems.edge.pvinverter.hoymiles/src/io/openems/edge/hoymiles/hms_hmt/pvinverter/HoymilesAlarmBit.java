@@ -20,9 +20,10 @@ public enum HoymilesAlarmBit {
 	 */
 
 	// Alarm3 (register 0x390A)
-	ALARM3_MPPT_A_UNDERVOLTAGE_PV1_PV2(3, 12, Severity.FAULT, "MPPT A undervoltage (PV1/PV2)"),
-	ALARM3_MPPT_B_UNDERVOLTAGE_PV3_PV4(3, 13, Severity.FAULT, "MPPT B undervoltage (PV3/PV4)"),
-	ALARM3_MPPT_C_UNDERVOLTAGE_PV5_PV6(3, 14, Severity.FAULT, "MPPT C undervoltage (PV5/PV6)"),
+	ALARM3_MPPT_A_UNDERVOLTAGE_PV1_PV2(3, 12, Severity.INFO, "MPPT A undervoltage (PV1/PV2)"),
+	ALARM3_MPPT_B_UNDERVOLTAGE_PV3_PV4(3, 13, Severity.INFO, "MPPT B undervoltage (PV3/PV4)"),
+	ALARM3_MPPT_C_UNDERVOLTAGE_PV5_PV6(3, 14, Severity.INFO, "MPPT C undervoltage (PV5/PV6)"),
+	ALARM3_PV2_UNDERVOLTAGE(3, 15, Severity.INFO, "Undervoltage (PV2)"),
 
 	// Alarm4 (register 0x390B)
 	ALARM4_PV1_NO_INPUT(4, 2, Severity.WARNING, "PV1 no input"),
