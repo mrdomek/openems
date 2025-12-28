@@ -318,6 +318,13 @@ public interface PvInverterHoymilesHMSHMT extends ManagedSymmetricPvInverter, El
                             .unit(Unit.NONE) //
                             .text("Coarse interpreted status of Microinverter 1 (e.g. PRODUCING / STANDBY / ERROR).")),
             
+            SEL_MI_OPERATION_MODE( //
+                    Doc.of(OpenemsType.STRING) //
+                            .unit(Unit.NONE) //
+                            .text("Microinverter operation mode derived from SelMiStatusCode and SelMiActivePowerW. "
+                                    + "Values: OFF, IDLE, PRODUCING.")),
+
+            
             SEL_MI_ALARM_SUMMARY( //
                     Doc.of(OpenemsType.STRING) //
                             .unit(Unit.NONE) //

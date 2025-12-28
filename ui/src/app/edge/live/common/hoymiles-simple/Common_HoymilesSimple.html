@@ -1,12 +1,11 @@
 <oe-flat-widget [title]="title">
-  <!-- mrdomek Click handling is implemented on a plain div to avoid relying on oe-flat-widget inputs -->
   <div class="hm-click-area" role="button" tabindex="0" (click)="presentModal()" (keydown.enter)="presentModal()"
     (keydown.space)="presentModal()">
-    <div class="hm-header">
-      <oe-flat-widget-line name="Serial" [channelAddress]="getSerialAddress()"></oe-flat-widget-line>
 
+    <div class="hm-header">
       <oe-flat-widget-line class="hm-ac-line" name="AC Power" [channelAddress]="getAcPowerAddress()"
-        [converter]="toWattString"></oe-flat-widget-line>
+        [converter]="toWattString">
+      </oe-flat-widget-line>
 
       <div class="hm-dc-total">
         <div class="hm-dc-total-label">DC Total</div>
@@ -17,7 +16,6 @@
       </div>
     </div>
 
-    <!-- mrdomek Table layout to force reliable separators -->
     <div class="hm-table-wrap">
       <table class="hm-table" aria-label="Hoymiles DC Inputs">
         <colgroup>
@@ -29,32 +27,28 @@
         <tbody>
           <ng-container *ngFor="let left of inputs; let i = index">
             <tr *ngIf="i % 2 === 0" class="hm-tr">
-
-              <!-- PV left -->
               <td class="hm-td hm-td-pv">
                 <div class="hm-pv-title">{{ inputs[i].label }}</div>
 
-                <!-- mrdomek Util (%) label removed; keep only the bar -->
-                <oe-flat-widget-percentagebar class="hm-bar"
-                  [channelAddress]="getUtilizationAddress(inputs[i])"></oe-flat-widget-percentagebar>
+                <oe-flat-widget-percentagebar class="hm-bar" [channelAddress]="getUtilizationAddress(inputs[i])">
+                </oe-flat-widget-percentagebar>
 
                 <oe-flat-widget-line name="Power" [channelAddress]="getPowerAddress(inputs[i])"
-                  [converter]="toWattString"></oe-flat-widget-line>
+                  [converter]="toWattString">
+                </oe-flat-widget-line>
               </td>
 
-              <!-- PV right -->
               <td class="hm-td hm-td-pv">
                 <div class="hm-pv-title">{{ inputs[i + 1]?.label }}</div>
 
-                <!-- mrdomek Util (%) label removed; keep only the bar -->
-                <oe-flat-widget-percentagebar class="hm-bar"
-                  [channelAddress]="getUtilizationAddress(inputs[i + 1])"></oe-flat-widget-percentagebar>
+                <oe-flat-widget-percentagebar class="hm-bar" [channelAddress]="getUtilizationAddress(inputs[i + 1])">
+                </oe-flat-widget-percentagebar>
 
                 <oe-flat-widget-line name="Power" [channelAddress]="getPowerAddress(inputs[i + 1])"
-                  [converter]="toWattString"></oe-flat-widget-line>
+                  [converter]="toWattString">
+                </oe-flat-widget-line>
               </td>
 
-              <!-- MPPT Sum -->
               <td class="hm-td hm-td-sum">
                 <div class="hm-sum-title">{{ getMpptSumLabel(i) }}</div>
 
@@ -63,20 +57,102 @@
                   <span class="hm-unit">W</span>
                 </div>
               </td>
-
             </tr>
           </ng-container>
         </tbody>
       </table>
     </div>
-
-    <div class="hm-alarms">
-      <oe-flat-widget-line name="Alarm Summary" [channelAddress]="getAlarmSummaryAddress()"></oe-flat-widget-line>
-
-      <oe-flat-widget-line name="Alarm Info" [channelAddress]="getAlarmSummaryInfoAddress()"></oe-flat-widget-line>
-
-      <oe-flat-widget-line name="Alarm Ignored"
-        [channelAddress]="getAlarmSummaryIgnoredAddress()"></oe-flat-widget-line>
-    </div>
   </div>
+
+  <!-- mrdomek Details modal: Serial + Temperature + PowerLimit + Alarms + PV details table -->
+  <ion-modal [isOpen]="isDetailsModalOpen" (didDismiss)="closeDetails()">
+    <ng-template>
+      <ion-header>
+        <ion-toolbar>
+          <ion-title>Hoymiles Details ({{ componentId }})</ion-title>
+          <ion-buttons slot="end">
+            <ion-button (click)="closeDetails()">Close</ion-button>
+          </ion-buttons>
+        </ion-toolbar>
+      </ion-header>
+
+      <ion-content class="ion-padding">
+        <oe-flat-widget-line name="Serial" [channelAddress]="getSerialAddress()"></oe-flat-widget-line>
+
+        <oe-flat-widget-line name="Inverter Temperature" [channelAddress]="getTemperatureAddress()"
+          [converter]="toCelsiusString">
+        </oe-flat-widget-line>
+
+        <oe-flat-widget-line name="ActivePowerLimit" [channelAddress]="getActivePowerLimitAddress()"
+          [converter]="toWattString">
+        </oe-flat-widget-line>
+
+        <div class="hm-section-title">Alarms</div>
+        <div class="hm-alarm-table-wrap">
+          <table class="hm-alarm-table" aria-label="Hoymiles Alarm Details">
+            <tbody>
+              <tr>
+                <td class="hm-alarm-label">Alarm Summary</td>
+                <td class="hm-alarm-value">{{ alarmSummaryText ?? "-" }}</td>
+              </tr>
+              <tr>
+                <td class="hm-alarm-label">Alarm Info</td>
+                <td class="hm-alarm-value">{{ alarmInfoText ?? "-" }}</td>
+              </tr>
+              <tr>
+                <td class="hm-alarm-label">Alarm Ignored</td>
+                <td class="hm-alarm-value">{{ alarmIgnoredText ?? "-" }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="hm-section-title">PV-Details</div>
+        <div class="hm-pvdetails-table-wrap">
+          <table class="hm-pvdetails-table" aria-label="PV-Details">
+            <thead>
+              <tr>
+                <th class="hm-pvdetails-th hm-left">PV-Input</th>
+                <th class="hm-pvdetails-th">PV-Voltage</th>
+                <th class="hm-pvdetails-th">PV-Current</th>
+                <th class="hm-pvdetails-th">PV-Power</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of pvDetails; let i = index">
+                <td class="hm-pvdetails-td hm-left">{{ row.label }}</td>
+
+                <td class="hm-pvdetails-td">
+                  {{
+                    pvDetailValues[i]?.voltageMv === null
+                      ? "-"
+                      : ((pvDetailValues[i].voltageMv / 1000) | number:'1.0-1')
+                  }}
+                  <span class="hm-unit">V</span>
+                </td>
+
+                <td class="hm-pvdetails-td">
+                  {{
+                    pvDetailValues[i]?.currentMa === null
+                      ? "-"
+                      : ((pvDetailValues[i].currentMa / 1000) | number:'1.0-2')
+                  }}
+                  <span class="hm-unit">A</span>
+                </td>
+
+                <td class="hm-pvdetails-td">
+                  {{
+                    pvDetailValues[i]?.powerW === null
+                      ? "-"
+                      : (pvDetailValues[i].powerW | number:'1.0-0')
+                  }}
+                  <span class="hm-unit">W</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </ion-content>
+    </ng-template>
+  </ion-modal>
 </oe-flat-widget>

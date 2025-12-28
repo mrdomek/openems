@@ -1,96 +1,67 @@
-//mrdomek Make the whole widget body feel clickable without relying on oe-flat-widget inputs.
-.hm-click-area {
-    cursor: pointer;
-}
+/* mrdomek We enforce borders on our own tables because surrounding widget styles can override defaults. */
 
-.hm-click-area:focus-visible {
-    outline: 2px solid rgba(0, 0, 0, 0.25);
-    outline-offset: 4px;
-    border-radius: 6px;
-}
-
-//mrdomek Header + DC total block
 .hm-header {
-    margin-bottom: 10px;
-}
-
-//mrdomek AC Power should be visually strong
-.hm-ac-line {
-    font-weight: 800;
-}
-
-//mrdomek DC Total should be visually lighter than AC Power
-.hm-dc-total {
-    margin-top: 6px;
-    padding-top: 6px;
-    border-top: 2px solid rgba(0, 0, 0, 0.12);
     display: flex;
+    align-items: center;
     justify-content: space-between;
-    align-items: baseline;
-    font-weight: 400; //mrdomek keep it thin
+    gap: 12px;
+    padding-bottom: 6px;
+}
+
+.hm-ac-line {
+    flex: 1 1 auto;
+}
+
+/* mrdomek Bold AC Power value (right-aligned td inside oe-flat-widget-line). */
+.hm-ac-line .align_right {
+    font-weight: 700;
+}
+
+.hm-dc-total {
+    flex: 0 0 auto;
+    text-align: right;
 }
 
 .hm-dc-total-label {
-    font-weight: 400;
-    opacity: 0.9;
+    font-size: 0.75rem;
+    opacity: 0.8;
 }
 
 .hm-dc-total-value {
     font-weight: 400;
+    /* mrdomek DC Total should stay thinner than AC Power */
 }
 
 .hm-unit {
-    font-size: 0.85rem;
-    opacity: 0.8;
-    margin-left: 4px;
+    margin-left: 3px;
+    opacity: 0.85;
 }
 
-//mrdomek Table wrapper + separator variables (light by default).
 .hm-table-wrap {
-    width: 100%;
     margin-top: 6px;
-
-    //mrdomek Light theme: dark separators
-    --hm-separator-strong: rgba(0, 0, 0, 0.22);
-    --hm-separator-soft: rgba(0, 0, 0, 0.12);
-}
-
-//mrdomek Dark-mode overrides.
-:host-context(body.dark) .hm-table-wrap,
-:host-context(.dark) .hm-table-wrap,
-:host-context(.ion-palette-dark) .hm-table-wrap {
-    --hm-separator-strong: rgba(255, 255, 255, 0.28);
-    --hm-separator-soft: rgba(255, 255, 255, 0.16);
 }
 
 .hm-table {
     width: 100%;
-    border-collapse: collapse; //mrdomek Ensures borders are continuous
+    border-collapse: collapse;
+    /* mrdomek Critical for visible grid lines */
     table-layout: fixed;
-}
-
-//mrdomek Give MPPT column more room (was too squeezed)
-.hm-col-pv {
-    width: 38%;
-}
-
-.hm-col-sum {
-    width: 24%;
 }
 
 .hm-td {
     vertical-align: top;
     padding: 10px 12px;
+    border: 1px solid var(--ion-color-light-shade, #d7d7d7);
+    /* mrdomek Light grey grid */
 }
 
-//mrdomek Vertical separators between PV1|PV2 and PV2|MPPT
-.hm-td+.hm-td {
-    border-left: 2px solid var(--hm-separator-strong);
+.hm-col-pv {
+    width: 34%;
 }
 
-//mrdomek Horizontal separators between PV-pairs (row to row)
-.hm-tr+.hm-tr .hm-td {
-    border-top: 2px solid var(--hm-separator-soft);
+.hm-col-sum {
+    width: 32%;
+    /* mrdomek MPPT column wider */
 }
 
 .hm-pv-title {
@@ -98,10 +69,10 @@
     margin-bottom: 6px;
 }
 
-//mrdomek Slightly tighter since we removed the Util line
 .hm-bar {
-    margin-top: 4px;
-    margin-bottom: 6px;
+    display: block;
+    margin: 6px 0 8px 0;
+    /* mrdomek Spacing between bar and lines */
 }
 
 .hm-td-sum {
@@ -109,16 +80,63 @@
 }
 
 .hm-sum-title {
-    font-weight: 700;
-    margin-bottom: 6px;
-    opacity: 0.95;
+    font-weight: 600;
+    margin-bottom: 8px;
 }
 
 .hm-sum-value {
-    font-size: 1.1rem;
-    font-weight: 800;
+    font-size: 1.05rem;
+    font-weight: 600;
 }
 
-.hm-alarms {
-    margin-top: 10px;
+.hm-section-title {
+    margin-top: 14px;
+    margin-bottom: 6px;
+    font-weight: 600;
+}
+
+/* ----- Alarm table ----- */
+.hm-alarm-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.hm-alarm-table td {
+    border: 1px solid var(--ion-color-light-shade, #d7d7d7);
+    padding: 8px 10px;
+    vertical-align: middle;
+}
+
+.hm-alarm-label {
+    width: 34%;
+    font-weight: 600;
+    text-align: left;
+}
+
+.hm-alarm-value {
+    text-align: left;
+    /* mrdomek Left aligned */
+    font-size: 0.8rem;
+    /* mrdomek Slightly smaller */
+    white-space: pre-line;
+    /* mrdomek Keep inserted line breaks */
+    word-break: break-word;
+}
+
+/* ----- PV details table ----- */
+.hm-pvdetails-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.hm-pvdetails-th,
+.hm-pvdetails-td {
+    border: 1px solid var(--ion-color-light-shade, #d7d7d7);
+    padding: 8px 10px;
+    vertical-align: middle;
+    text-align: center;
+}
+
+.hm-left {
+    text-align: left;
 }

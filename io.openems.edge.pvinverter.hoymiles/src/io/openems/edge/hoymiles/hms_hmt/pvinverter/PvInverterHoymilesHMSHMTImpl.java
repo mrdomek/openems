@@ -92,10 +92,6 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 	private final HoymilesPowerLimitHandler powerLimitHandler =
 			new HoymilesPowerLimitHandler(5_000L);
 
-	//mrdomek Why: Determine if a Controller is actively providing ACTIVE_POWER_LIMIT.
-	private static final long CONTROLLER_STALE_MS = 15_000L;
-	private volatile long lastActivePowerLimitUpdateMs = 0L;
-
 	// Selected microinverter number (1..99); used to shift the read register block.
 	private int microinverterNumber = 1;
 
@@ -360,8 +356,20 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		// Health-State (Ampel) aus Status- und Alarm-Register ableiten (night-mode aware)
 		updateHealthFromStatusAndAlarms(pTotal);
 
+		// Read raw StatusCode without guessing (no fallback-to-0).
+		Integer status = null;
+		Optional<?> statusOpt = this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_STATUS_CODE) //
+				.value() //
+				.asOptional();
+		if (statusOpt.isPresent() && statusOpt.get() instanceof Number) {
+			status = Integer.valueOf(((Number) statusOpt.get()).intValue());
+		}
+
+		final HoymilesMiStateLogic.OperationMode op = HoymilesMiStateLogic.deriveOperationMode(status, Integer.valueOf(pTotal));
+		//mrdomek Why: Expose the derived MI mode as a pure UI signal; do not mix with Alarm/Health/Runstate.
+		this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_OPERATION_MODE).setNextValue(op != null ? op.name() : null);
+
 		// Build interpreted status using full status+alarm context (not just hasAlarm)
-		final int status = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_STATUS_CODE);
 		final int alarm1 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM1_CODE);
 		final int alarm2 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM2_CODE);
 		final int alarm3 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM3_CODE);
@@ -369,7 +377,11 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		final int alarm5 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM5_CODE);
 		final int alarm6 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM6_CODE);
 
-		final String interpretedStatus = interpretHoymilesStatus(pTotal, status, alarm1, alarm2, alarm3, alarm4, alarm5, alarm6);
+		//mrdomek Why: If StatusCode is missing, pass an explicit "unknown" value instead of guessing 0 (would fake OFF at night).
+		final int rawStatusForInterpretation = (status != null) ? status.intValue() : -1;
+
+		final String interpretedStatus = interpretHoymilesStatus(pTotal, rawStatusForInterpretation, alarm1, alarm2, alarm3, alarm4, alarm5,
+				alarm6);
 		this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_INTERPRETED_STATUS).setNextValue(interpretedStatus);
 
 		// Trigger für die erweiterte Debug-Ausgabe
@@ -380,9 +392,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 	public void setActivePowerLimit(Integer power) throws OpenemsNamedException {
 		final Integer normalized = (power == null) ? null : Integer.valueOf(Math.max(0, power.intValue()));
 
-		this.lastActivePowerLimitUpdateMs = System.currentTimeMillis();
-
-		// For visibility in standard channels + debug log
+		//mrdomek Why: Controller may not call this cyclically; null is the only reliable "controller inactive" signal.
 		this.channel(ManagedSymmetricPvInverter.ChannelId.ACTIVE_POWER_LIMIT).setNextValue(normalized);
 		this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_LIMIT_ACTIVE_POWER_W).setNextValue(normalized);
 
@@ -392,6 +402,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 					normalized == null ? "null" : normalized.toString()));
 		}
 	}
+
 
 	private void applyActivePowerLimitFromChannel() {
 		if (this.portTempLimitActivePower == null) {
@@ -429,16 +440,6 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		if (this.config != null && this.config.debugMode()) {
 			this.logInfo(this.log, "PowerLimit: defaultPercent from config = " + defaultPercent
 					+ " (componentId=" + this.id() + ")");
-		}
-
-
-		final long ageMs = (this.lastActivePowerLimitUpdateMs > 0L)
-				? (now - this.lastActivePowerLimitUpdateMs)
-				: Long.MAX_VALUE;
-		final boolean controllerFresh = ageMs <= CONTROLLER_STALE_MS;
-		if (!controllerFresh) {
-			//mrdomek Why: avoid using stale limits if the controller stopped running.
-			targetLimitW = null;
 		}
 
 		// Mirror for UI/debug

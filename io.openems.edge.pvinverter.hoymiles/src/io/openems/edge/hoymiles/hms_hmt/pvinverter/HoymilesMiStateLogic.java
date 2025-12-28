@@ -35,6 +35,41 @@ public final class HoymilesMiStateLogic {
 		}
 	}
 
+	public enum OperationMode {
+		OFF, IDLE, PRODUCING;
+	}
+
+	public static OperationMode deriveOperationMode(Integer rawStatusCode, Integer activePowerW) {
+		//mrdomek Why: Derive a robust MI state only from the two agreed signals; if any input is missing, do not guess.
+		if (rawStatusCode == null || activePowerW == null) {
+			return null;
+		}
+
+		final int status = u16(rawStatusCode.intValue());
+		final int p = activePowerW.intValue();
+
+		if (status == 0 && p == 0) {
+			return OperationMode.OFF;
+		}
+		if (status != 0 && p == 0) {
+			return OperationMode.IDLE;
+		}
+		if (status != 0 && p > 0) {
+			return OperationMode.PRODUCING;
+		}
+
+		//mrdomek Why: Keep UI truthful for unexpected combinations (e.g. status==0 while power>0).
+		return null;
+	}
+
+	
+	public enum SelMiOperationMode {
+		OFF,        // Microinverter off (night), DTU reachable
+		IDLE,       // Online, no production
+		PRODUCING   // Active production
+	}
+
+	
 	public static final class AlarmClassification {
 		public final boolean hasFault;
 		public final boolean hasWarning;
@@ -69,6 +104,12 @@ public final class HoymilesMiStateLogic {
 		final AlarmClassification cls = classify(true, totalPowerW, Integer.valueOf(rawStatusCode), inputChannels, pvInstalled, alarm1, alarm2,
 				alarm3, alarm4, alarm5, alarm6);
 
+		final OperationMode op = deriveOperationMode(Integer.valueOf(rawStatusCode), Integer.valueOf(totalPowerW));
+		if (op == OperationMode.OFF) {
+			//mrdomek Why: At night the DTU stays reachable while the MI is intentionally off; this must not be labeled OFFLINE.
+			return "Microinverter is off (night). DTU reachable.";
+		}
+
 		final Mi1Status st = Mi1Status.fromRaw(rawStatusCode);
 
 		if (st == Mi1Status.OFFLINE) {
@@ -88,6 +129,7 @@ public final class HoymilesMiStateLogic {
 		}
 		return "UNKNOWN";
 	}
+
 
 	public static AlarmClassification classify(boolean hasData, int totalPowerW, Integer statusRaw, int inputChannels, boolean[] pvInstalled,
 			int alarm1, int alarm2, int alarm3, int alarm4, int alarm5, int alarm6) {

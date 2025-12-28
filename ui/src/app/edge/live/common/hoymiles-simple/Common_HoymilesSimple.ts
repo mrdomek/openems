@@ -11,6 +11,13 @@ interface DcInputConfig {
     powerChannel: string;
 }
 
+interface PvDetailRowConfig {
+    label: string;
+    voltageMvChannel: string;
+    currentMaChannel: string;
+    powerWChannel: string;
+}
+
 @Component({
     standalone: true,
     selector: "Common_HoymilesSimple",
@@ -37,18 +44,41 @@ export class Common_HoymilesSimpleComponent implements OnInit, OnDestroy {
         { label: "PV4", utilizationChannel: "SelMiPv4UtilizationPercent", powerChannel: "SelMiPv4PowerW" },
     ];
 
+    //mrdomek Modal state is kept inside the widget to avoid external dependencies.
+    public isDetailsModalOpen: boolean = false;
+
+    //mrdomek Alarm texts are cached as display strings (with optional line breaks).
+    public alarmSummaryText: string | null = null;
+    public alarmInfoText: string | null = null;
+    public alarmIgnoredText: string | null = null;
+
+    //mrdomek PV detail table rows (PV1..PV6). We show "-" if channels are not available.
+    public pvDetails: PvDetailRowConfig[] = [
+        { label: "PV1", voltageMvChannel: "SelMiPv1VoltageMv", currentMaChannel: "SelMiPv1CurrentMa", powerWChannel: "SelMiPv1PowerW" },
+        { label: "PV2", voltageMvChannel: "SelMiPv2VoltageMv", currentMaChannel: "SelMiPv2CurrentMa", powerWChannel: "SelMiPv2PowerW" },
+        { label: "PV3", voltageMvChannel: "SelMiPv3VoltageMv", currentMaChannel: "SelMiPv3CurrentMa", powerWChannel: "SelMiPv3PowerW" },
+        { label: "PV4", voltageMvChannel: "SelMiPv4VoltageMv", currentMaChannel: "SelMiPv4CurrentMa", powerWChannel: "SelMiPv4PowerW" },
+        { label: "PV5", voltageMvChannel: "SelMiPv5VoltageMv", currentMaChannel: "SelMiPv5CurrentMa", powerWChannel: "SelMiPv5PowerW" },
+        { label: "PV6", voltageMvChannel: "SelMiPv6VoltageMv", currentMaChannel: "SelMiPv6CurrentMa", powerWChannel: "SelMiPv6PowerW" },
+    ];
+
+    //mrdomek Live cache for PV detail values, aligned with this.pvDetails index.
+    public pvDetailValues: Array<{ voltageMv: number | null; currentMa: number | null; powerW: number | null }> = [];
+
+    //mrdomek Live cache for DC power values (W), aligned with this.inputs index.
+    private powerValuesW: Array<number | null> = [];
+
     private readonly serialChannel: string = "SelMiSerial";
+    private readonly temperatureChannel: string = "SelMiTemperatureC";
+    private readonly activePowerLimitChannel: string = "ActivePowerLimit";
     private readonly acPowerChannel: string = "SelMiActivePowerW";
 
     private readonly alarmSummaryChannel: string = "SelMiAlarmSummary";
     private readonly alarmSummaryInfoChannel: string = "SelMiAlarmSummaryInfo";
     private readonly alarmSummaryIgnoredChannel: string = "SelMiAlarmSummaryIgnored";
 
-    //mrdomek Cache for live DC power values (W), aligned with this.inputs index.
-    private powerValuesW: Array<number | null> = [];
-
-    //mrdomek Explicit subscriptions for PV power channels used in sums.
-    private subscribedPowerAddresses: ChannelAddress[] = [];
+    //mrdomek One combined subscription list keeps unsubscribe deterministic.
+    private subscribedAddresses: ChannelAddress[] = [];
 
     private injector: Injector = inject(Injector);
     private subscription: EffectRef | null = null;
@@ -61,13 +91,37 @@ export class Common_HoymilesSimpleComponent implements OnInit, OnDestroy {
     public ngOnInit(): void {
         //mrdomek Initialize caches deterministically.
         this.powerValuesW = this.inputs.map(() => null);
+        this.pvDetailValues = this.pvDetails.map(() => ({ voltageMv: null, currentMa: null, powerW: null }));
 
         this.service.getCurrentEdge().then(edge => {
-            this.subscribedPowerAddresses = this.inputs.map(input =>
-                new ChannelAddress(this.componentId, input.powerChannel),
-            );
+            //mrdomek Build subscription list: all channels needed for sums + modal tables.
+            const addresses: ChannelAddress[] = [];
 
-            this.dataService.getValues(this.subscribedPowerAddresses, edge, this.componentId);
+            // Power channels (for MPPT sums + DC total)
+            for (const input of this.inputs) {
+                addresses.push(new ChannelAddress(this.componentId, input.powerChannel));
+            }
+
+            // Modal header channels
+            addresses.push(new ChannelAddress(this.componentId, this.serialChannel));
+            addresses.push(new ChannelAddress(this.componentId, this.temperatureChannel));
+            addresses.push(new ChannelAddress(this.componentId, this.activePowerLimitChannel));
+
+            // Modal alarm channels
+            addresses.push(new ChannelAddress(this.componentId, this.alarmSummaryChannel));
+            addresses.push(new ChannelAddress(this.componentId, this.alarmSummaryInfoChannel));
+            addresses.push(new ChannelAddress(this.componentId, this.alarmSummaryIgnoredChannel));
+
+            // PV detail table channels
+            for (const row of this.pvDetails) {
+                addresses.push(new ChannelAddress(this.componentId, row.voltageMvChannel));
+                addresses.push(new ChannelAddress(this.componentId, row.currentMaChannel));
+                addresses.push(new ChannelAddress(this.componentId, row.powerWChannel));
+            }
+
+            this.subscribedAddresses = addresses;
+
+            this.dataService.getValues(this.subscribedAddresses, edge, this.componentId);
 
             this.subscription = effect(() => {
                 const currentData = this.dataService.currentValue();
@@ -77,10 +131,18 @@ export class Common_HoymilesSimpleComponent implements OnInit, OnDestroy {
     }
 
     public ngOnDestroy(): void {
-        if (this.subscribedPowerAddresses.length > 0) {
-            this.dataService.unsubscribeFromChannels(this.subscribedPowerAddresses);
+        if (this.subscribedAddresses.length > 0) {
+            this.dataService.unsubscribeFromChannels(this.subscribedAddresses);
         }
         this.subscription?.destroy();
+    }
+
+    public presentModal(): void {
+        this.isDetailsModalOpen = true;
+    }
+
+    public closeDetails(): void {
+        this.isDetailsModalOpen = false;
     }
 
     public getUtilizationAddress(input: DcInputConfig): string {
@@ -95,20 +157,16 @@ export class Common_HoymilesSimpleComponent implements OnInit, OnDestroy {
         return `${this.componentId}/${this.serialChannel}`;
     }
 
+    public getTemperatureAddress(): string {
+        return `${this.componentId}/${this.temperatureChannel}`;
+    }
+
+    public getActivePowerLimitAddress(): string {
+        return `${this.componentId}/${this.activePowerLimitChannel}`;
+    }
+
     public getAcPowerAddress(): string {
         return `${this.componentId}/${this.acPowerChannel}`;
-    }
-
-    public getAlarmSummaryAddress(): string {
-        return `${this.componentId}/${this.alarmSummaryChannel}`;
-    }
-
-    public getAlarmSummaryInfoAddress(): string {
-        return `${this.componentId}/${this.alarmSummaryInfoChannel}`;
-    }
-
-    public getAlarmSummaryIgnoredAddress(): string {
-        return `${this.componentId}/${this.alarmSummaryIgnoredChannel}`;
     }
 
     public getPairPowerSumW(evenIndex: number): number | null {
@@ -132,7 +190,6 @@ export class Common_HoymilesSimpleComponent implements OnInit, OnDestroy {
                 sum += v;
             }
         }
-
         return any ? sum : null;
     }
 
@@ -154,8 +211,28 @@ export class Common_HoymilesSimpleComponent implements OnInit, OnDestroy {
         return "-";
     }
 
-    public presentModal(): void {
-        alert(`Hoymiles-Details (${this.componentId}): hier kommt später ein Detail-Modal.`);
+    //mrdomek Converter for °C channels.
+    public toCelsiusString(value: any): string {
+        const n = (typeof value === "number")
+            ? value
+            : (typeof value === "string" ? Number(value) : Number.NaN);
+
+        if (Number.isFinite(n)) {
+            return `${Math.round(n)} °C`;
+        }
+        return "-";
+    }
+
+    //mrdomek Format alarm strings to show one entry per line if ';' is used as separator.
+    public formatAlarmText(value: any): string | null {
+        if (value == null) {
+            return null;
+        }
+        const s = String(value).trim();
+        if (s.length === 0) {
+            return null;
+        }
+        return s.replace(/;\s*/g, ";\n");
     }
 
     private onCurrentData(currentData: CurrentData): void {
@@ -163,10 +240,31 @@ export class Common_HoymilesSimpleComponent implements OnInit, OnDestroy {
             return;
         }
 
+        //mrdomek Cache PV power values used for sums.
         for (let i = 0; i < this.inputs.length; i++) {
             const address = new ChannelAddress(this.componentId, this.inputs[i].powerChannel);
             const raw = currentData.allComponents[address.toString()];
             this.powerValuesW[i] = this.toNumberOrNull(raw);
+        }
+
+        //mrdomek Cache alarm texts for modal table display.
+        this.alarmSummaryText = this.formatAlarmText(currentData.allComponents[new ChannelAddress(this.componentId, this.alarmSummaryChannel).toString()]);
+        this.alarmInfoText = this.formatAlarmText(currentData.allComponents[new ChannelAddress(this.componentId, this.alarmSummaryInfoChannel).toString()]);
+        this.alarmIgnoredText = this.formatAlarmText(currentData.allComponents[new ChannelAddress(this.componentId, this.alarmSummaryIgnoredChannel).toString()]);
+
+        //mrdomek Cache PV details (mV, mA, W).
+        for (let i = 0; i < this.pvDetails.length; i++) {
+            const row = this.pvDetails[i];
+
+            const vRaw = currentData.allComponents[new ChannelAddress(this.componentId, row.voltageMvChannel).toString()];
+            const cRaw = currentData.allComponents[new ChannelAddress(this.componentId, row.currentMaChannel).toString()];
+            const pRaw = currentData.allComponents[new ChannelAddress(this.componentId, row.powerWChannel).toString()];
+
+            this.pvDetailValues[i] = {
+                voltageMv: this.toNumberOrNull(vRaw),
+                currentMa: this.toNumberOrNull(cRaw),
+                powerW: this.toNumberOrNull(pRaw),
+            };
         }
     }
 
