@@ -87,6 +87,13 @@
           [converter]="toWattString">
         </oe-flat-widget-line>
 
+        <oe-flat-widget-line name="ActivePowerLimit" [channelAddress]="getLimitActivePowerPercentAddress()"
+          [converter]="toPercentString"></oe-flat-widget-line>
+
+        <oe-flat-widget-line name="OperationMode" [channelAddress]="getOperationModeAddress()"
+          [converter]="toTextString"></oe-flat-widget-line>
+
+
         <div class="hm-section-title">Alarms</div>
         <div class="hm-alarm-table-wrap">
           <table class="hm-alarm-table" aria-label="Hoymiles Alarm Details">

@@ -2,9 +2,11 @@
 
 .hm-header {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
+    flex-direction: column;
+    /* mrdomek Stack AC and DC vertically. */
+    align-items: stretch;
+    /* mrdomek Full width for child rows. */
+    gap: 6px;
     padding-bottom: 6px;
 }
 
@@ -12,15 +14,23 @@
     flex: 1 1 auto;
 }
 
-/* mrdomek Bold AC Power value (right-aligned td inside oe-flat-widget-line). */
-.hm-ac-line .align_right {
-    font-weight: 700;
+/* mrdomek Angular style encapsulation prevents styling inside oe-flat-widget-line without ::ng-deep. */
+:host ::ng-deep oe-flat-widget-line.hm-ac-line td.align_right {
+    font-weight: 700 !important;
+    /* mrdomek Force only AC value to be bold. */
 }
 
 .hm-dc-total {
-    flex: 0 0 auto;
-    text-align: right;
+    display: flex;
+    /* mrdomek Left label + right value on the same line. */
+    justify-content: space-between;
+    /* mrdomek Label left, value right. */
+    align-items: baseline;
+    width: 100%;
+    text-align: left;
+    /* mrdomek Label stays left; value alignment handled below. */
 }
+
 
 .hm-dc-total-label {
     font-size: 0.75rem;
@@ -28,9 +38,11 @@
 }
 
 .hm-dc-total-value {
-    font-weight: 400;
-    /* mrdomek DC Total should stay thinner than AC Power */
+    font-weight: 400 !important;
+    /* mrdomek Force DC Total value to stay thinner than AC. */
+    text-align: right;
 }
+
 
 .hm-unit {
     margin-left: 3px;
