@@ -37,9 +37,9 @@ import io.openems.edge.bridge.modbus.api.ModbusComponent;
 import io.openems.edge.bridge.modbus.api.ModbusProtocol;
 import io.openems.edge.bridge.modbus.api.element.SignedWordElement;
 import io.openems.edge.bridge.modbus.api.element.UnsignedDoublewordElement;
-import io.openems.edge.bridge.modbus.api.task.FC16WriteRegistersTask;
 import io.openems.edge.bridge.modbus.api.task.FC3ReadRegistersTask;
 import io.openems.edge.bridge.modbus.api.task.FC4ReadInputRegistersTask;
+import io.openems.edge.bridge.modbus.api.task.FC6WriteRegisterTask;
 import io.openems.edge.bridge.modbus.api.task.Task;
 import io.openems.edge.common.component.OpenemsComponent;
 import io.openems.edge.common.modbusslave.ModbusSlave;
@@ -72,6 +72,19 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 	 * - false -> debugLog() gibt einen leeren String zurück
 	 */
 	private static final boolean INTERNAL_DEBUG = true;
+	
+	//mrdomek Why: Avoid writing default percent on transient ACTIVE_POWER_LIMIT==null during controller updates.
+	private static final int POWER_LIMIT_NULL_GRACE_CYCLES = 3;
+
+	//mrdomek Why: Cache latest request from setActivePowerLimit() to decouple apply() from channel value/nextValue timing.
+	private Integer requestedActivePowerLimitW = null;
+
+	//mrdomek Why: Keep last non-null limit during grace window to suppress default writes caused by transient nulls.
+	private Integer lastNonNullActivePowerLimitW = null;
+
+	//mrdomek Why: Count consecutive cycles with null ACTIVE_POWER_LIMIT to decide when null is stable enough for default.
+	private int consecutiveNullActivePowerLimitCycles = 0;
+
 
 	/*
 	 * Configuration as provided by OSGi / Felix WebConsole.
@@ -429,6 +442,17 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 	public void setActivePowerLimit(Integer power) throws OpenemsNamedException {
 		final Integer normalized = (power == null) ? null : Integer.valueOf(Math.max(0, power.intValue()));
 
+		//mrdomek Why: Cache to avoid transient nulls caused by channel nextValue/value timing.
+		this.requestedActivePowerLimitW = normalized;
+
+		if (normalized != null) {
+			//mrdomek Why: Remember last non-null value to suppress default writes during short null windows.
+			this.lastNonNullActivePowerLimitW = normalized;
+
+			//mrdomek Why: New non-null command ends any null-grace tracking immediately.
+			this.consecutiveNullActivePowerLimitCycles = 0;
+		}
+
 		//mrdomek Why: Controller may not call this cyclically; null is the only reliable "controller inactive" signal.
 		this.channel(ManagedSymmetricPvInverter.ChannelId.ACTIVE_POWER_LIMIT).setNextValue(normalized);
 		this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_LIMIT_ACTIVE_POWER_W).setNextValue(normalized);
@@ -462,38 +486,65 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		}
 
 		/*
-		 * Robust input: ONLY use the standard OpenEMS channel.
-		 * If this is UNDEFINED, the issue is upstream (manager/controller), not inside this component.
+		 * Determine the requested limit robustly:
+		 * - prefer cached request from setActivePowerLimit()
+		 * - fall back to channel.value() for compatibility
 		 */
-		Integer targetLimitW = null;
-		Optional<?> opt = this.channel(io.openems.edge.pvinverter.api.ManagedSymmetricPvInverter.ChannelId.ACTIVE_POWER_LIMIT)
-				.value()
-				.asOptional();
-		if (opt.isPresent() && opt.get() instanceof Number) {
-			targetLimitW = Integer.valueOf(((Number) opt.get()).intValue());
+		Integer rawTargetLimitW = this.requestedActivePowerLimitW;
+
+		if (rawTargetLimitW == null) {
+			//mrdomek Why: Backward compatibility if something sets the channel without calling setActivePowerLimit().
+			Optional<?> opt = this.channel(io.openems.edge.pvinverter.api.ManagedSymmetricPvInverter.ChannelId.ACTIVE_POWER_LIMIT)
+					.value()
+					.asOptional();
+			if (opt.isPresent() && opt.get() instanceof Number) {
+				rawTargetLimitW = Integer.valueOf(((Number) opt.get()).intValue());
+				this.requestedActivePowerLimitW = rawTargetLimitW;
+
+				//mrdomek Why: Treat observed non-null as stable source for grace window.
+				this.lastNonNullActivePowerLimitW = rawTargetLimitW;
+				this.consecutiveNullActivePowerLimitCycles = 0;
+			}
+		}
+
+		// Track null stability for "switch-to-default" decision (cycle-based only)
+		if (rawTargetLimitW == null) {
+			this.consecutiveNullActivePowerLimitCycles++;
+		} else {
+			this.lastNonNullActivePowerLimitW = rawTargetLimitW;
+			this.consecutiveNullActivePowerLimitCycles = 0;
+		}
+
+		Integer effectiveTargetLimitW = rawTargetLimitW;
+
+		if (effectiveTargetLimitW == null && this.lastNonNullActivePowerLimitW != null) {
+			final boolean nullIsStableEnoughForDefault = //
+					this.consecutiveNullActivePowerLimitCycles >= POWER_LIMIT_NULL_GRACE_CYCLES;
+
+			if (!nullIsStableEnoughForDefault) {
+				//mrdomek Why: Suppress default writes during transient null windows; keep last known non-null limit.
+				effectiveTargetLimitW = this.lastNonNullActivePowerLimitW;
+
+				if (this.config != null && this.config.debugMode()) {
+					this.logInfo(this.log, "PowerLimit: target=null -> suppress default (grace). lastNonNull="
+							+ this.lastNonNullActivePowerLimitW + "W"
+							+ " nullCycles=" + this.consecutiveNullActivePowerLimitCycles
+							+ "/" + POWER_LIMIT_NULL_GRACE_CYCLES);
+				}
+			}
 		}
 
 		final int defaultPercent = (this.config != null) ? this.config.defaultPowerPercent() : 100;
-		if (this.config != null && this.config.debugMode()) {
-			this.logInfo(this.log, "PowerLimit: defaultPercent from config = " + defaultPercent
-					+ " (componentId=" + this.id() + ")");
-		}
-
-		// Mirror for UI/debug
-		this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_LIMIT_ACTIVE_POWER_W).setNextValue(targetLimitW);
-
 
 		final int mpptTotal = (model != null) ? model.getMpptTotal() : 1;
 		final int mpptActive = this.getActiveMpptCountFromConfig(model);
 
-		// effectiveMaxW = maxTotalPowerW * mpptActive / mpptTotal
 		final int effectiveMaxW = (maxTotalPowerW > 0 && mpptTotal > 0)
 				? (int) Math.round(maxTotalPowerW * (mpptActive / (double) mpptTotal))
 				: maxTotalPowerW;
 
-
 		this.powerLimitHandler.applyMpptScaled(
-				targetLimitW,
+				effectiveTargetLimitW,
 				defaultPercent,
 				effectiveMaxW,
 				minPercent,
@@ -1485,12 +1536,13 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
 		// Writes (only if not readOnly)
 		if (!this.config.readOnly()) {
-			for (int port = 1; port <= MAX_PORTS; port++) {
-				final int addr = 0xD006 + (port - 1) * 0x0006;
-				tasks.add(new FC16WriteRegistersTask(addr,
-						this.portOnOffByPort[port - 1],
-						this.portTempLimitActivePowerByPort[port - 1]));
-			}
+		    for (int port = 1; port <= MAX_PORTS; port++) {
+		        final int addr = 0xD006 + (port - 1) * 0x0006;
+
+		        //mrdomek Why: Some DTU/MI control registers accept only FC6 (single-register write); FC16 can drop the power-limit write.
+		        tasks.add(new FC6WriteRegisterTask(addr + 0x0000, this.portOnOffByPort[port - 1]));
+		        tasks.add(new FC6WriteRegisterTask(addr + 0x0001, this.portTempLimitActivePowerByPort[port - 1]));
+		    }
 		}
 
 		return new ModbusProtocol(this, tasks.toArray(new Task[0]));
