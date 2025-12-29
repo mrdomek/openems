@@ -40,7 +40,7 @@ public final class HoymilesMiStateLogic {
 	}
 
 	public static OperationMode deriveOperationMode(Integer rawStatusCode, Integer activePowerW) {
-		//mrdomek Why: Derive a robust MI state only from the two agreed signals; if any input is missing, do not guess.
+		//mrdomek Why: Derive MI state only from the two agreed signals; if any input is missing, do not guess.
 		if (rawStatusCode == null || activePowerW == null) {
 			return null;
 		}
@@ -62,14 +62,6 @@ public final class HoymilesMiStateLogic {
 		return null;
 	}
 
-	
-	public enum SelMiOperationMode {
-		OFF,        // Microinverter off (night), DTU reachable
-		IDLE,       // Online, no production
-		PRODUCING   // Active production
-	}
-
-	
 	public static final class AlarmClassification {
 		public final boolean hasFault;
 		public final boolean hasWarning;
@@ -106,7 +98,7 @@ public final class HoymilesMiStateLogic {
 
 		final OperationMode op = deriveOperationMode(Integer.valueOf(rawStatusCode), Integer.valueOf(totalPowerW));
 		if (op == OperationMode.OFF) {
-			//mrdomek Why: At night the DTU stays reachable while the MI is intentionally off; this must not be labeled OFFLINE.
+			//mrdomek Why: DTU stays reachable at night; MI being off must not be labeled as offline/fault.
 			return "Microinverter is off (night). DTU reachable.";
 		}
 

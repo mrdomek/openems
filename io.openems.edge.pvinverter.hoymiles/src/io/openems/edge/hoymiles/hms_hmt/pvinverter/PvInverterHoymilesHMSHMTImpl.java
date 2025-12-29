@@ -87,6 +87,10 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 	 * → block size: 0x60 (96 words) per microinverter.
 	 */
 	private static final int MI_REGISTER_BLOCK_SIZE = 0x60; // 96 registers per inverter block
+	
+	//mrdomek Why: MI may ignore limit writes during boot; delay re-apply after PRODUCING transition to improve reliability.
+	private static final long POWER_LIMIT_WAKEUP_REWRITE_DELAY_MS = 5_000L;
+
 
 	//mrdomek Keep power-limit logic out of the component to stay readable.
 	private final HoymilesPowerLimitHandler powerLimitHandler =
@@ -94,6 +98,10 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 
 	//mrdomek Why: Detect MI wake-up (OFF/IDLE->PRODUCING) to re-apply OpenEMS power limit after nightly shutdown.
 	private HoymilesMiStateLogic.OperationMode lastOperationMode = null;
+	
+	//mrdomek Why: Store the due timestamp for the delayed re-apply; null means "no pending wake-up re-apply".
+	private Long pendingWakeupRewriteAtMs = null;
+
 	
 	// Selected microinverter number (1..99); used to shift the read register block.
 	private int microinverterNumber = 1;
@@ -372,16 +380,30 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		//mrdomek Why: Expose the derived MI mode as a pure UI signal; do not mix with Alarm/Health/Runstate.
 		this.channel(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_OPERATION_MODE).setNextValue(op != null ? op.name() : null);
 
+		final long now = System.currentTimeMillis();
+
 		if (op != null) {
 			if (op == HoymilesMiStateLogic.OperationMode.PRODUCING
-					&& this.lastOperationMode != HoymilesMiStateLogic.OperationMode.PRODUCING
-					&& this.config != null && !this.config.readOnly()
-					&& this.portTempLimitActivePower != null) {
-				//mrdomek Why: MI may restart with the Hoymiles Cloud limit; force a re-write on first PRODUCING after OFF/IDLE.
-				this.powerLimitHandler.reset();
+					&& this.lastOperationMode != HoymilesMiStateLogic.OperationMode.PRODUCING) {
+				//mrdomek Why: Trigger only on transitions into PRODUCING (OFF/IDLE/UNKNOWN->PRODUCING); leaving PRODUCING must not write.
+				this.pendingWakeupRewriteAtMs = Long.valueOf(now + POWER_LIMIT_WAKEUP_REWRITE_DELAY_MS);
 			}
-			//mrdomek Why: Keep the last stable mode to avoid retriggering on cycles with missing/unknown inputs.
+			if (op != HoymilesMiStateLogic.OperationMode.PRODUCING) {
+				//mrdomek Why: Cancel pending re-apply if MI stops producing again before the delay elapsed.
+				this.pendingWakeupRewriteAtMs = null;
+			}
+
 			this.lastOperationMode = op;
+		}
+
+		if (this.pendingWakeupRewriteAtMs != null
+				&& now >= this.pendingWakeupRewriteAtMs.longValue()
+				&& op == HoymilesMiStateLogic.OperationMode.PRODUCING
+				&& this.config != null && !this.config.readOnly()
+				&& this.portTempLimitActivePower != null) {
+			//mrdomek Why: PowerLimitHandler may skip unchanged percent; after MI wake-up we force exactly one re-write at a stable time.
+			this.powerLimitHandler.reset();
+			this.pendingWakeupRewriteAtMs = null;
 		}
 
 		// Build interpreted status using full status+alarm context (not just hasAlarm)
@@ -392,7 +414,7 @@ public class PvInverterHoymilesHMSHMTImpl extends AbstractOpenemsModbusComponent
 		final int alarm5 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM5_CODE);
 		final int alarm6 = getWordChannelOrZero(PvInverterHoymilesHMSHMT.ChannelId.SEL_MI_ALARM6_CODE);
 
-		//mrdomek Why: If StatusCode is missing, pass an explicit "unknown" value instead of guessing 0 (would fake OFF at night).
+		//mrdomek Why: If StatusCode is missing, pass an explicit unknown value instead of guessing 0 (would fake OFF at night).
 		final int rawStatusForInterpretation = (status != null) ? status.intValue() : -1;
 
 		final String interpretedStatus = interpretHoymilesStatus(pTotal, rawStatusForInterpretation, alarm1, alarm2, alarm3, alarm4, alarm5,
