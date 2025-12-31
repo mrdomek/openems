@@ -1,0 +1,7 @@
+eclipse.preferences.version=1
+encoding//src/io/openems/edge/battery/jk_bms/Config.java=UTF-8
+encoding//src/io/openems/edge/battery/jk_bms/JKBMSBattery.java=UTF-8
+encoding//src/io/openems/edge/battery/jk_bms/JKBMSBatteryImpl.java=UTF-8
+encoding/<project>=UTF-8
+encoding/bnd.bnd=UTF-8
+encoding/readme.adoc=UTF-8
