@@ -9,16 +9,17 @@ public interface JKBMSBattery extends OpenemsComponent {
 	public enum ChannelId implements io.openems.edge.common.channel.ChannelId {
 
 		// --- Cell voltages (mV) ---
-		CELL_VOLTAGE_0_MV(Doc.of(OpenemsType.INTEGER)),
-		CELL_VOLTAGE_1_MV(Doc.of(OpenemsType.INTEGER)),
-		CELL_VOLTAGE_2_MV(Doc.of(OpenemsType.INTEGER)),
-		CELL_VOLTAGE_3_MV(Doc.of(OpenemsType.INTEGER)),
-		CELL_VOLTAGE_4_MV(Doc.of(OpenemsType.INTEGER)),
-		CELL_VOLTAGE_5_MV(Doc.of(OpenemsType.INTEGER)),
-		CELL_VOLTAGE_6_MV(Doc.of(OpenemsType.INTEGER)),
-		CELL_VOLTAGE_7_MV(Doc.of(OpenemsType.INTEGER)),
-		CELL_VOLTAGE_8_MV(Doc.of(OpenemsType.INTEGER)),
-		CELL_VOLTAGE_9_MV(Doc.of(OpenemsType.INTEGER)),
+		// [FIX] Führende Nullen für korrekte Sortierung im Log
+		CELL_VOLTAGE_00_MV(Doc.of(OpenemsType.INTEGER)),
+		CELL_VOLTAGE_01_MV(Doc.of(OpenemsType.INTEGER)),
+		CELL_VOLTAGE_02_MV(Doc.of(OpenemsType.INTEGER)),
+		CELL_VOLTAGE_03_MV(Doc.of(OpenemsType.INTEGER)),
+		CELL_VOLTAGE_04_MV(Doc.of(OpenemsType.INTEGER)),
+		CELL_VOLTAGE_05_MV(Doc.of(OpenemsType.INTEGER)),
+		CELL_VOLTAGE_06_MV(Doc.of(OpenemsType.INTEGER)),
+		CELL_VOLTAGE_07_MV(Doc.of(OpenemsType.INTEGER)),
+		CELL_VOLTAGE_08_MV(Doc.of(OpenemsType.INTEGER)),
+		CELL_VOLTAGE_09_MV(Doc.of(OpenemsType.INTEGER)),
 		CELL_VOLTAGE_10_MV(Doc.of(OpenemsType.INTEGER)),
 		CELL_VOLTAGE_11_MV(Doc.of(OpenemsType.INTEGER)),
 		CELL_VOLTAGE_12_MV(Doc.of(OpenemsType.INTEGER)),
@@ -43,16 +44,17 @@ public interface JKBMSBattery extends OpenemsComponent {
 		CELL_VOLTAGE_31_MV(Doc.of(OpenemsType.INTEGER)),
 
 		// --- Cell wire resistance (mΩ) ---
-		CELL_WIRE_RES_0_MOHM(Doc.of(OpenemsType.INTEGER)),
-		CELL_WIRE_RES_1_MOHM(Doc.of(OpenemsType.INTEGER)),
-		CELL_WIRE_RES_2_MOHM(Doc.of(OpenemsType.INTEGER)),
-		CELL_WIRE_RES_3_MOHM(Doc.of(OpenemsType.INTEGER)),
-		CELL_WIRE_RES_4_MOHM(Doc.of(OpenemsType.INTEGER)),
-		CELL_WIRE_RES_5_MOHM(Doc.of(OpenemsType.INTEGER)),
-		CELL_WIRE_RES_6_MOHM(Doc.of(OpenemsType.INTEGER)),
-		CELL_WIRE_RES_7_MOHM(Doc.of(OpenemsType.INTEGER)),
-		CELL_WIRE_RES_8_MOHM(Doc.of(OpenemsType.INTEGER)),
-		CELL_WIRE_RES_9_MOHM(Doc.of(OpenemsType.INTEGER)),
+		// [FIX] Führende Nullen für korrekte Sortierung im Log
+		CELL_WIRE_RES_00_MOHM(Doc.of(OpenemsType.INTEGER)),
+		CELL_WIRE_RES_01_MOHM(Doc.of(OpenemsType.INTEGER)),
+		CELL_WIRE_RES_02_MOHM(Doc.of(OpenemsType.INTEGER)),
+		CELL_WIRE_RES_03_MOHM(Doc.of(OpenemsType.INTEGER)),
+		CELL_WIRE_RES_04_MOHM(Doc.of(OpenemsType.INTEGER)),
+		CELL_WIRE_RES_05_MOHM(Doc.of(OpenemsType.INTEGER)),
+		CELL_WIRE_RES_06_MOHM(Doc.of(OpenemsType.INTEGER)),
+		CELL_WIRE_RES_07_MOHM(Doc.of(OpenemsType.INTEGER)),
+		CELL_WIRE_RES_08_MOHM(Doc.of(OpenemsType.INTEGER)),
+		CELL_WIRE_RES_09_MOHM(Doc.of(OpenemsType.INTEGER)),
 		CELL_WIRE_RES_10_MOHM(Doc.of(OpenemsType.INTEGER)),
 		CELL_WIRE_RES_11_MOHM(Doc.of(OpenemsType.INTEGER)),
 		CELL_WIRE_RES_12_MOHM(Doc.of(OpenemsType.INTEGER)),
@@ -76,7 +78,7 @@ public interface JKBMSBattery extends OpenemsComponent {
 		CELL_WIRE_RES_30_MOHM(Doc.of(OpenemsType.INTEGER)),
 		CELL_WIRE_RES_31_MOHM(Doc.of(OpenemsType.INTEGER)),
 
-		// --- Temperatures (register is 0.1°C; we scale by -1 to get °C as int) ---
+		// --- Temperatures ---
 		TEMP_MOS_C(Doc.of(OpenemsType.INTEGER)),
 		TEMP_BAT_1_C(Doc.of(OpenemsType.INTEGER)),
 		TEMP_BAT_2_C(Doc.of(OpenemsType.INTEGER)),
@@ -85,22 +87,22 @@ public interface JKBMSBattery extends OpenemsComponent {
 		TEMP_BAT_5_C(Doc.of(OpenemsType.INTEGER)),
 
 		// --- Pack values ---
-		BAT_VOLTAGE_MV(Doc.of(OpenemsType.LONG)),    //mrdomek Doc says mV (UINT32)
-		BAT_CURRENT_MA(Doc.of(OpenemsType.LONG)),    //mrdomek Doc says mA (INT32)
+		BAT_VOLTAGE_MV(Doc.of(OpenemsType.LONG)),
+		BAT_CURRENT_MA(Doc.of(OpenemsType.LONG)),
 
 		// --- Balancing ---
 		BALANCE_CURRENT_MA(Doc.of(OpenemsType.INTEGER)),
 		BALANCE_STATE(Doc.of(OpenemsType.INTEGER)),
 
 		// --- SOC/SOH ---
-		SOC(Doc.of(OpenemsType.INTEGER)), //mrdomek Derived from SOCSOH byte0
-		SOH(Doc.of(OpenemsType.INTEGER)), //mrdomek Derived from SOCSOH byte1
+		SOC(Doc.of(OpenemsType.INTEGER)),
+		SOH(Doc.of(OpenemsType.INTEGER)),
 		SOC_CAP_REMAIN_MAH(Doc.of(OpenemsType.LONG)),
 		SOC_FULL_CHARGE_CAP_MAH(Doc.of(OpenemsType.LONG)),
 		SOC_CYCLE_COUNT(Doc.of(OpenemsType.LONG)),
 		SOC_CYCLE_CAP_MAH(Doc.of(OpenemsType.LONG)),
 
-		// --- Alarms / status (raw for now) ---
+		// --- Alarms / status ---
 		USER_ALARM(Doc.of(OpenemsType.INTEGER)),
 		USER_ALARM_2(Doc.of(OpenemsType.INTEGER)),
 		MOS_TEMP_SENSOR_ABSENT(Doc.of(OpenemsType.INTEGER)),
@@ -110,7 +112,7 @@ public interface JKBMSBattery extends OpenemsComponent {
 		HEAT_CURRENT_MA(Doc.of(OpenemsType.INTEGER)),
 
 		// --- Runtime ---
-		SYS_RUN_TICKS_DS(Doc.of(OpenemsType.LONG)); //mrdomek Doc says 0.1s ticks (UINT32)
+		SYS_RUN_TICKS_DS(Doc.of(OpenemsType.LONG));
 
 		private final Doc doc;
 
