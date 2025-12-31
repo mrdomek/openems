@@ -113,26 +113,53 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 		}
 	}
 
+	/**
+	 * Sammelt ALLE Channel-Werte und gruppiert sie automatisch nach ihrer Herkunft (Nature/Interface).
+	 * Funktioniert auch für zukünftige Natures ohne Code-Änderung.
+	 */
 	public String collectDebugData() {
-		return Stream.of( //
-				JKBMSBattery.ChannelId.values(), //
-				Battery.ChannelId.values(), //
-				OpenemsComponent.ChannelId.values(), //
-				ModbusComponent.ChannelId.values() //
-		) //
-				.flatMap(Arrays::stream) //
-				.map(id -> {
-					try {
-						return id.name() + "=" + this.channel(id).value().asString();
-					} catch (Exception e) {
-						return id.name() + "=n/a";
+		// Wir holen uns alle aktiven Channels der Komponente
+		return this.channels().stream()
+				// Sortieren nach Channel-Name (innerhalb der Gruppe)
+				.sorted((c1, c2) -> c1.channelId().name().compareTo(c2.channelId().name()))
+				// Gruppieren nach dem Namen des Interfaces (z.B. "Battery", "JKBMSBattery")
+				.collect(Collectors.groupingBy(channel -> {
+					// Trick: Wir holen die Klasse der ChannelId (meist ein Enum)
+					// und davon die "Declaring Class" (das Interface).
+					Class<?> clazz = channel.channelId().getClass();
+					Class<?> declaring = clazz.getDeclaringClass();
+					if (declaring != null) {
+						return declaring.getSimpleName();
+					} else {
+						return clazz.getSimpleName();
 					}
-				}) //
-				.sorted() //
-				.distinct() //
-				.collect(Collectors.joining("; \n"));
+				}))
+				// Den Map-Inhalt in einen schönen String verwandeln
+				.entrySet().stream()
+				// Sortieren der Gruppen (JKBMSBattery zuerst, dann alphabetisch der Rest)
+				.sorted((e1, e2) -> {
+					String k1 = e1.getKey();
+					String k2 = e2.getKey();
+					// Eigene Klasse immer nach oben
+					if (k1.equals("JKBMSBattery")) return -1;
+					if (k2.equals("JKBMSBattery")) return 1;
+					return k1.compareTo(k2);
+				})
+				.map(entry -> {
+					String groupName = entry.getKey();
+					String channels = entry.getValue().stream()
+							.map(channel -> {
+								try {
+									return String.format("%-30s = %s", channel.channelId().name(), channel.value().asString());
+								} catch (Exception e) {
+									return "Error reading channel";
+								}
+							})
+							.collect(Collectors.joining("\n"));
+					return "--- " + groupName + " ---\n" + channels;
+				})
+				.collect(Collectors.joining("\n\n"));
 	}
-
 	@Override
 	protected void logDebug(Logger log, String message) {
 		if (this.config.debugMode()) {
