@@ -120,7 +120,16 @@ public interface JKBMSBattery extends OpenemsComponent {
 		HEAT_CURRENT_MA(Doc.of(INTEGER).unit(MILLIAMPERE).accessMode(READ_ONLY).text("Heater Current")),
 
 		// --- Runtime ---
-		SYS_RUN_TICKS_DS(Doc.of(LONG).unit(NONE).accessMode(READ_ONLY).text("System Run Time (0.1s ticks)"));
+		SYS_RUN_TICKS_DS(Doc.of(LONG).unit(NONE).accessMode(READ_ONLY).text("System Run Time (0.1s ticks)")),
+		
+		// --- Settings aus Block 3 (0x1000) ---
+		// Wir lesen diese Werte und mappen sie intern auf die Battery-Nature
+		JK_SETTING_VOLTAGE_SOC_100(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Settings: Voltage at SOC 100%")),
+		JK_SETTING_VOLTAGE_SOC_0(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Settings: Voltage at SOC 0%")),
+		JK_SETTING_CAPACITY_AH(Doc.of(INTEGER).unit(MILLIAMPERE_HOURS).accessMode(READ_ONLY).text("Settings: Battery Capacity")),
+		JK_SETTING_MAX_CHARGE_CURRENT(Doc.of(INTEGER).unit(MILLIAMPERE).accessMode(READ_ONLY).text("Settings: Max Charge Current")),
+		JK_SETTING_MAX_DISCHARGE_CURRENT(Doc.of(INTEGER).unit(MILLIAMPERE).accessMode(READ_ONLY).text("Settings: Max Discharge Current")),
+		JK_SETTING_CELL_COUNT(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Settings: Cell Count"));
 
 		private final Doc doc;
 

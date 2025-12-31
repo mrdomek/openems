@@ -2,14 +2,12 @@ package io.openems.edge.battery.jk_bms;
 
 import static io.openems.edge.bridge.modbus.api.ElementToChannelConverter.DIRECT_1_TO_1;
 import static io.openems.edge.bridge.modbus.api.ElementToChannelConverter.SCALE_FACTOR_MINUS_1;
-import static org.osgi.service.component.annotations.ConfigurationPolicy.REQUIRE;
 import static org.osgi.service.component.annotations.ReferenceCardinality.MANDATORY;
 import static org.osgi.service.component.annotations.ReferencePolicy.STATIC;
 import static org.osgi.service.component.annotations.ReferencePolicyOption.GREEDY;
 
 import java.util.Arrays;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import org.osgi.service.cm.ConfigurationAdmin;
 import org.osgi.service.component.ComponentContext;
@@ -35,6 +33,7 @@ import io.openems.edge.bridge.modbus.api.element.SignedDoublewordElement;
 import io.openems.edge.bridge.modbus.api.element.SignedWordElement;
 import io.openems.edge.bridge.modbus.api.element.UnsignedDoublewordElement;
 import io.openems.edge.bridge.modbus.api.element.UnsignedWordElement;
+import io.openems.edge.bridge.modbus.api.element.WordOrder;
 import io.openems.edge.bridge.modbus.api.task.FC3ReadRegistersTask;
 import io.openems.edge.common.component.OpenemsComponent;
 import io.openems.edge.common.event.EdgeEventConstants;
@@ -72,12 +71,9 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 				ModbusComponent.ChannelId.values(), //
 				Battery.ChannelId.values(), //
 				// FIX: Doppelte Channel-IDs filtern und Typ voll qualifizieren
-				Arrays.stream(JKBMSBattery.ChannelId.values())
-					.filter(id -> {
-						return Arrays.stream(Battery.ChannelId.values())
-								.noneMatch(batId -> batId.name().equals(id.name()));
-					})
-					.toArray(io.openems.edge.common.channel.ChannelId[]::new) // [FIX] Ambiguous Type gelöst
+				Arrays.stream(JKBMSBattery.ChannelId.values()).filter(id -> {
+					return Arrays.stream(Battery.ChannelId.values()).noneMatch(batId -> batId.name().equals(id.name()));
+				}).toArray(io.openems.edge.common.channel.ChannelId[]::new) // [FIX] Ambiguous Type gelöst
 		);
 	}
 
@@ -114,8 +110,9 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 	}
 
 	/**
-	 * Sammelt ALLE Channel-Werte und gruppiert sie automatisch nach ihrer Herkunft (Nature/Interface).
-	 * Funktioniert auch für zukünftige Natures ohne Code-Änderung.
+	 * Sammelt ALLE Channel-Werte und gruppiert sie automatisch nach ihrer Herkunft
+	 * (Nature/Interface). Funktioniert auch für zukünftige Natures ohne
+	 * Code-Änderung.
 	 */
 	public String collectDebugData() {
 		// Wir holen uns alle aktiven Channels der Komponente
@@ -141,25 +138,24 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 					String k1 = e1.getKey();
 					String k2 = e2.getKey();
 					// Eigene Klasse immer nach oben
-					if (k1.equals("JKBMSBattery")) return -1;
-					if (k2.equals("JKBMSBattery")) return 1;
+					if (k1.equals("JKBMSBattery"))
+						return -1;
+					if (k2.equals("JKBMSBattery"))
+						return 1;
 					return k1.compareTo(k2);
-				})
-				.map(entry -> {
+				}).map(entry -> {
 					String groupName = entry.getKey();
-					String channels = entry.getValue().stream()
-							.map(channel -> {
-								try {
-									return String.format("%-30s = %s", channel.channelId().name(), channel.value().asString());
-								} catch (Exception e) {
-									return "Error reading channel";
-								}
-							})
-							.collect(Collectors.joining("\n"));
+					String channels = entry.getValue().stream().map(channel -> {
+						try {
+							return String.format("%-30s = %s", channel.channelId().name(), channel.value().asString());
+						} catch (Exception e) {
+							return "Error reading channel";
+						}
+					}).collect(Collectors.joining("\n"));
 					return "--- " + groupName + " ---\n" + channels;
-				})
-				.collect(Collectors.joining("\n\n"));
+				}).collect(Collectors.joining("\n\n"));
 	}
+
 	@Override
 	protected void logDebug(Logger log, String message) {
 		if (this.config.debugMode()) {
@@ -173,20 +169,10 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 	}
 
 	@Override
-	public String debugLog() {
-		return "JK-BMS" //
-				+ " U=" + this.getVoltage().asString() //
-				+ " I=" + this.getCurrent().asString() //
-				+ " SOC=" + this.getSoc().asString() //
-				+ " SOH=" + this.getSoh().asString();
-	}
-
-	@Override
 	protected ModbusProtocol defineModbusProtocol() {
 		return new ModbusProtocol(this, //
 
 				// --- BLOCK 1: Zellspannungen & Widerstände (0x1200 - 0x1244) ---
-				// (Dieser Block bleibt exakt so wie in deinem Code)
 				new FC3ReadRegistersTask(0x1200, Priority.LOW, //
 						m(JKBMSBattery.ChannelId.CELL_VOLTAGE_00_MV, new UnsignedWordElement(0x1200), DIRECT_1_TO_1),
 						m(JKBMSBattery.ChannelId.CELL_VOLTAGE_01_MV, new UnsignedWordElement(0x1201), DIRECT_1_TO_1),
@@ -257,9 +243,8 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 						m(JKBMSBattery.ChannelId.CELL_WIRE_RES_30_MOHM, new UnsignedWordElement(0x1243), DIRECT_1_TO_1),
 						m(JKBMSBattery.ChannelId.CELL_WIRE_RES_31_MOHM, new UnsignedWordElement(0x1244), DIRECT_1_TO_1)),
 
-				// --- BLOCK 2: Der "Shifted" Block ---
-				// START: 0x128A
-				new FC3ReadRegistersTask(0x128A, Priority.LOW, //
+				// --- BLOCK 2: Restliche Daten (0x128A - 0x1298) ---
+				new FC3ReadRegistersTask(0x128A, Priority.HIGH, //
 
 						// Offset 0
 						m(JKBMSBattery.ChannelId.TEMP_MOS_C, new SignedWordElement(0x128A), SCALE_FACTOR_MINUS_1),
@@ -267,22 +252,24 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 						// Offset 1
 						new DummyRegisterElement(0x128B, 0x128C),
 
-						// Offset 3
+						// Offset 3: Battery Voltage (U32)
+						// FIX: BMS liefert mV, OpenEMS erwartet V -> / 1000
 						m(JKBMSBattery.ChannelId.BAT_VOLTAGE_MV, new UnsignedDoublewordElement(0x128D), DIRECT_1_TO_1)
-							.onUpdateCallback(val -> {
-								if (val == null) return;
-								this._setVoltage(val.intValue());
-							}),
+								.onUpdateCallback(val -> {
+									if (val == null) return;
+									this._setVoltage(val.intValue() / 1000); // mV -> V
+								}),
 
 						// Offset 5
 						new DummyRegisterElement(0x128F, 0x1290),
 
-						// Offset 7
+						// Offset 7: Battery Current (I32)
+						// FIX: BMS liefert mA, OpenEMS erwartet A -> / 1000
 						m(JKBMSBattery.ChannelId.BAT_CURRENT_MA, new SignedDoublewordElement(0x1291), DIRECT_1_TO_1)
-							.onUpdateCallback(val -> {
-								if (val == null) return;
-								this._setCurrent(val.intValue());
-							}),
+								.onUpdateCallback(val -> {
+									if (val == null) return;
+									this._setCurrent(val.intValue() / 1000); // mA -> A
+								}),
 
 						// Offset 9
 						m(JKBMSBattery.ChannelId.TEMP_BAT_1_C, new SignedWordElement(0x1293), SCALE_FACTOR_MINUS_1),
@@ -297,25 +284,17 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 						m(JKBMSBattery.ChannelId.BALANCE_CURRENT_MA, new SignedWordElement(0x1297), DIRECT_1_TO_1),
 
 						// Offset 14: SOC (Byte 0) & Balance (Byte 1) bei 0x1298
-						m(new UnsignedWordElement(0x1298))
-							.build()
-							.onUpdateCallback(raw -> {
-								if (raw == null) return;
-								
-								// Byte 0 = SOC
-								int soc = raw & 0xFF;
-								// Byte 1 = Balance State
-								int balance = (raw >> 8) & 0xFF;
-								
-								// Setze SOC (Standard & Privat)
-								this._setSoc(soc);
-								try {
-									this.channel(JKBMSBattery.ChannelId.SOC).setNextValue(soc);
-								} catch (Exception e) {} // Ignorieren falls gefiltert
+						m(new UnsignedWordElement(0x1298)).build().onUpdateCallback(raw -> {
+							if (raw == null) return;
+							int soc = raw & 0xFF;
+							int balance = (raw >> 8) & 0xFF;
 
-								// Setze Balance State (Privat)
-								this.channel(JKBMSBattery.ChannelId.BALANCE_STATE).setNextValue(balance);
-							}),
+							this._setSoc(soc);
+							try {
+								this.channel(JKBMSBattery.ChannelId.SOC).setNextValue(soc);
+							} catch (Exception e) {}
+							this.channel(JKBMSBattery.ChannelId.BALANCE_STATE).setNextValue(balance);
+						}),
 
 						// Offset 15
 						m(JKBMSBattery.ChannelId.SOC_CAP_REMAIN_MAH, new SignedDoublewordElement(0x1299), DIRECT_1_TO_1),
@@ -329,19 +308,15 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 						// Offset 21
 						m(JKBMSBattery.ChannelId.SOC_CYCLE_CAP_MAH, new UnsignedDoublewordElement(0x129F), DIRECT_1_TO_1),
 
-						// Offset 23: Altes SOC/SOH bei 0x12A1 (SOH Byte 1)
-						m(new UnsignedWordElement(0x12A1))
-							.build()
-							.onUpdateCallback(raw -> {
-								if (raw == null) return;
-								// Byte 1 = SOH
-								int soh = (raw >> 8) & 0xFF;
-								
-								this._setSoh(soh);
-								try {
-									this.channel(JKBMSBattery.ChannelId.SOH).setNextValue(soh);
-								} catch (Exception e) {}
-							}),
+						// Offset 23: SOH (Byte 1)
+						m(new UnsignedWordElement(0x12A1)).build().onUpdateCallback(raw -> {
+							if (raw == null) return;
+							int soh = (raw >> 8) & 0xFF;
+							this._setSoh(soh);
+							try {
+								this.channel(JKBMSBattery.ChannelId.SOH).setNextValue(soh);
+							} catch (Exception e) {}
+						}),
 
 						// Offset 24
 						m(JKBMSBattery.ChannelId.USER_ALARM, new UnsignedWordElement(0x12A2), DIRECT_1_TO_1),
@@ -368,26 +343,96 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 						m(JKBMSBattery.ChannelId.HEAT_CURRENT_MA, new SignedWordElement(0x12B6), DIRECT_1_TO_1),
 
 						// Offset 45
-						new DummyRegisterElement(0x12B7, 0x12B9),
+						new DummyRegisterElement(0x12B7),
 
 						// Offset 48
-						m(JKBMSBattery.ChannelId.SYS_RUN_TICKS_DS, new UnsignedDoublewordElement(0x12BA), DIRECT_1_TO_1),
-
-						// Offset 50
-						new DummyRegisterElement(0x12BC, 0x12BD),
+						m(JKBMSBattery.ChannelId.SYS_RUN_TICKS_DS, new UnsignedDoublewordElement(0x12B8), DIRECT_1_TO_1),
 
 						// Offset 52
-						m(JKBMSBattery.ChannelId.TEMP_BAT_3_C, new SignedWordElement(0x12BE), SCALE_FACTOR_MINUS_1),
+						m(JKBMSBattery.ChannelId.TEMP_BAT_3_C, new SignedWordElement(0x12BA), SCALE_FACTOR_MINUS_1),
 
 						// Offset 53
-						m(JKBMSBattery.ChannelId.TEMP_BAT_4_C, new SignedWordElement(0x12BF), SCALE_FACTOR_MINUS_1),
+						m(JKBMSBattery.ChannelId.TEMP_BAT_4_C, new SignedWordElement(0x12BB), SCALE_FACTOR_MINUS_1),
 
 						// Offset 54
-						m(JKBMSBattery.ChannelId.TEMP_BAT_5_C, new SignedWordElement(0x12C0), SCALE_FACTOR_MINUS_1),
+						m(JKBMSBattery.ChannelId.TEMP_BAT_5_C, new SignedWordElement(0x12BC), SCALE_FACTOR_MINUS_1),
+
+						// Gap
+						new DummyRegisterElement(0x12BD, 0x12C0),
 
 						// Offset 55
-						m(JKBMSBattery.ChannelId.PCL_MODULE_STATUS, new UnsignedWordElement(0x12C1), DIRECT_1_TO_1)));
-	}	
+						m(JKBMSBattery.ChannelId.PCL_MODULE_STATUS, new UnsignedDoublewordElement(0x12C1), DIRECT_1_TO_1)),
+
+				// --- BLOCK 3: SETTINGS (0x1000 - 0x103E) ---
+				new FC3ReadRegistersTask(0x1000, Priority.LOW, //
+						
+						// 0x1000: Smart Sleep Voltage (Gap)
+						new DummyRegisterElement(0x1000, 0x100B),
+						
+						// 0x100C: Voltage SOC 100% (UINT32, mV) -> CHARGE_MAX_VOLTAGE (V)
+						// FIX: mV -> V
+						m(JKBMSBattery.ChannelId.JK_SETTING_VOLTAGE_SOC_100, new UnsignedDoublewordElement(0x100C), DIRECT_1_TO_1)
+							.onUpdateCallback(val -> {
+								if (val == null) return;
+								this._setChargeMaxVoltage(val.intValue() / 1000); 
+							}),
+						
+						// 0x100E: Voltage SOC 0% (UINT32, mV) -> DISCHARGE_MIN_VOLTAGE (V)
+						// FIX: mV -> V
+						m(JKBMSBattery.ChannelId.JK_SETTING_VOLTAGE_SOC_0, new UnsignedDoublewordElement(0x100E), DIRECT_1_TO_1)
+							.onUpdateCallback(val -> {
+								if (val == null) return;
+								this._setDischargeMinVoltage(val.intValue() / 1000); 
+							}),
+						
+						// Gap 0x1010 - 0x1015
+						new DummyRegisterElement(0x1010, 0x1015),
+						
+						// 0x1016: Charge Current (UINT32, mA) -> CHARGE_MAX_CURRENT (A)
+						// FIX: mA -> A
+						m(JKBMSBattery.ChannelId.JK_SETTING_MAX_CHARGE_CURRENT, new UnsignedDoublewordElement(0x1016), DIRECT_1_TO_1)
+							.onUpdateCallback(val -> {
+								if (val == null) return;
+								this._setChargeMaxCurrent(val.intValue() / 1000); 
+							}),
+						
+						// Gap 0x1018 - 0x101B
+						new DummyRegisterElement(0x1018, 0x101B),
+						
+						// 0x101C: Discharge Current (UINT32, mA) -> DISCHARGE_MAX_CURRENT (A)
+						// FIX: mA -> A
+						m(JKBMSBattery.ChannelId.JK_SETTING_MAX_DISCHARGE_CURRENT, new UnsignedDoublewordElement(0x101C), DIRECT_1_TO_1)
+							.onUpdateCallback(val -> {
+								if (val == null) return;
+								this._setDischargeMaxCurrent(val.intValue() / 1000); 
+							}),
+						
+						// Gap 0x101E - 0x1035
+						new DummyRegisterElement(0x101E, 0x1035),
+						
+						// 0x1036: CellCount
+						m(JKBMSBattery.ChannelId.JK_SETTING_CELL_COUNT, new UnsignedDoublewordElement(0x1036), DIRECT_1_TO_1),
+
+						// Gap 0x1038 - 0x103D
+						new DummyRegisterElement(0x1038, 0x103D),
+						
+						
+						// 0x103E: Battery Capacity (UINT32, mAH) -> CAPACITY (Wh)
+						m(JKBMSBattery.ChannelId.JK_SETTING_CAPACITY_AH, new UnsignedDoublewordElement(0x103E), DIRECT_1_TO_1)
+							.onUpdateCallback(valMah -> {
+								if (valMah == null) return;
+								// Capacity [Wh] = Capacity [mAh] * Voltage [V] / 1000
+								// Achtung: Voltage ist jetzt in Volt (wegen Division oben).
+								// Wenn getVoltage() jetzt z.B. 52 (V) liefert:
+								// Wh = mAh * V / 1000
+								Integer voltageV = this.getVoltage().get();
+								if (voltageV != null) {
+									long capacityWh = (long) valMah * voltageV / 1000;
+									this._setCapacity((int) capacityWh);
+								}
+							})
+								));
+	}
 	
 	private void handleSocSoh(int rawWord) {
 		final int soc = rawWord & 0xFF;
@@ -396,7 +441,7 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 		// Update Standard Battery Nature
 		this._setSoc(soc);
 		this._setSoh(soh);
-		
+
 		// Update JK Specific Nature (wenn nicht gefiltert)
 		try {
 			this.channel(JKBMSBattery.ChannelId.SOC).setNextValue(soc);
