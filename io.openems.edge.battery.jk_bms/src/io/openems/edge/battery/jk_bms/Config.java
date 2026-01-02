@@ -23,6 +23,18 @@ import org.osgi.service.metatype.annotations.ObjectClassDefinition;
 	@AttributeDefinition(name = "Modbus Unit-ID", description = "The Unit-ID of the Modbus device.")
 	int modbusUnitId() default 1;
 	
+	@AttributeDefinition(name = "Charge Enable", description = "Enables Charge Mosfet")
+	boolean chargeEnable() default true;	
+
+	@AttributeDefinition(name = "Discharge Enable", description = "Enables Discarge Mosfet")
+	boolean dischargeEnable() default true;	
+	
+	@AttributeDefinition(name = "Balance Enable", description = "Enables Balance")
+	boolean balanceEnable() default true;	
+
+	@AttributeDefinition(name = "Heat Enable", description = "Enables Headpads")
+	boolean heatEnable() default false;	
+	
 	@AttributeDefinition(name = "Debug mode", description = "Enables Debug mode")
 	boolean debugMode() default false;	
 	

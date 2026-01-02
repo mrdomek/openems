@@ -334,7 +334,7 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 						new DummyRegisterElement(0x12A7, 0x12AC),
 
 						// Offset 35
-						m(JKBMSBattery.ChannelId.MOS_TEMP_SENSOR_ABSENT, new UnsignedWordElement(0x12AD), DIRECT_1_TO_1),
+						m(JKBMSBattery.ChannelId.TEMP_SENSOR_ABSENT, new UnsignedWordElement(0x12AD), DIRECT_1_TO_1),
 
 						// Offset 36
 						new DummyRegisterElement(0x12AE, 0x12B5),
@@ -348,49 +348,71 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 						// Offset 48
 						m(JKBMSBattery.ChannelId.SYS_RUN_TICKS_DS, new UnsignedDoublewordElement(0x12B8), DIRECT_1_TO_1),
 
-						// Offset 52
-						m(JKBMSBattery.ChannelId.TEMP_BAT_3_C, new SignedWordElement(0x12BA), SCALE_FACTOR_MINUS_1),
-
-						// Offset 53
-						m(JKBMSBattery.ChannelId.TEMP_BAT_4_C, new SignedWordElement(0x12BB), SCALE_FACTOR_MINUS_1),
-
-						// Offset 54
-						m(JKBMSBattery.ChannelId.TEMP_BAT_5_C, new SignedWordElement(0x12BC), SCALE_FACTOR_MINUS_1),
-
 						// Gap
-						new DummyRegisterElement(0x12BD, 0x12C0),
+						new DummyRegisterElement(0x12BA, 0x12C0),
 
 						// Offset 55
-						m(JKBMSBattery.ChannelId.PCL_MODULE_STATUS, new UnsignedDoublewordElement(0x12C1), DIRECT_1_TO_1)),
+						m(JKBMSBattery.ChannelId.PCL_MODULE_STATUS, new UnsignedWordElement(0x12C1), DIRECT_1_TO_1),
+				
+						// Offset 52
+						m(JKBMSBattery.ChannelId.TEMP_BAT_3_C, new SignedWordElement(0x12C2), SCALE_FACTOR_MINUS_1),
+
+						// Offset 53
+						m(JKBMSBattery.ChannelId.TEMP_BAT_4_C, new SignedWordElement(0x12C3), SCALE_FACTOR_MINUS_1)),
+				
+						
 
 				// --- BLOCK 3: SETTINGS (0x1000 - 0x103E) ---
-				new FC3ReadRegistersTask(0x1000, Priority.LOW, //
+				new FC3ReadRegistersTask(0x1000, Priority.HIGH, //
 						
 						// 0x1000: Smart Sleep Voltage (Gap)
-						new DummyRegisterElement(0x1000, 0x100B),
+						new DummyRegisterElement(0x1000, 0x1001),
 						
-						// 0x100C: Voltage SOC 100% (UINT32, mV) -> CHARGE_MAX_VOLTAGE (V)
+						// 0x1002: Cell UPV (UINT32, mV) -> MIN_CELL_VOLTAGE (V)
+						m(JKBMSBattery.ChannelId.SETTINGS_CELL_UVP, new UnsignedDoublewordElement(0x1002), DIRECT_1_TO_1)
+							.onUpdateCallback(val -> {
+								if (val == null) return;
+								this._setMinCellVoltage(val.intValue()); 
+							}),
+
+						// 0x1006 - 0x1005: (Gap)
+						new DummyRegisterElement(0x1004, 0x1005),
+
+							
+						// 0x1006: Cell OPV (UINT32, mV) -> MIN_CELL_VOLTAGE (V)
+						m(JKBMSBattery.ChannelId.SETTINGS_CELL_OVP, new UnsignedDoublewordElement(0x1006), DIRECT_1_TO_1)
+							.onUpdateCallback(val -> {
+								if (val == null) return;
+								this._setMaxCellVoltage(val.intValue()); 
+							}),
+							
+						// 0x1008 - 0x100D: (Gap)
+						new DummyRegisterElement(0x1008, 0x100D),
+
+							
+						// 0x100E: Voltage SOC 0% (UINT32, mV) -> DISCHARGE_MIN_VOLTAGE (V)
 						// FIX: mV -> V
-						m(JKBMSBattery.ChannelId.JK_SETTING_VOLTAGE_SOC_100, new UnsignedDoublewordElement(0x100C), DIRECT_1_TO_1)
+						m(JKBMSBattery.ChannelId.SETTINGS_VOLTAGE_SOC_0, new UnsignedDoublewordElement(0x100E), DIRECT_1_TO_1)
+							.onUpdateCallback(val -> {
+								if (val == null) return;
+									this._setDischargeMinVoltage(val.intValue() / 1000); 
+							}),
+							
+						// 0x1010: CELL RCV (UINT32, mV) -> CHARGE_MAX_VOLTAGE (V)
+						// FIX: mV -> V
+						m(JKBMSBattery.ChannelId.SETTINGS_CELL_RCV, new UnsignedDoublewordElement(0x1010), DIRECT_1_TO_1)
 							.onUpdateCallback(val -> {
 								if (val == null) return;
 								this._setChargeMaxVoltage(val.intValue() / 1000); 
 							}),
-						
-						// 0x100E: Voltage SOC 0% (UINT32, mV) -> DISCHARGE_MIN_VOLTAGE (V)
-						// FIX: mV -> V
-						m(JKBMSBattery.ChannelId.JK_SETTING_VOLTAGE_SOC_0, new UnsignedDoublewordElement(0x100E), DIRECT_1_TO_1)
-							.onUpdateCallback(val -> {
-								if (val == null) return;
-								this._setDischargeMinVoltage(val.intValue() / 1000); 
-							}),
-						
+					
+					
 						// Gap 0x1010 - 0x1015
-						new DummyRegisterElement(0x1010, 0x1015),
+						new DummyRegisterElement(0x1012, 0x1015),
 						
 						// 0x1016: Charge Current (UINT32, mA) -> CHARGE_MAX_CURRENT (A)
 						// FIX: mA -> A
-						m(JKBMSBattery.ChannelId.JK_SETTING_MAX_CHARGE_CURRENT, new UnsignedDoublewordElement(0x1016), DIRECT_1_TO_1)
+						m(JKBMSBattery.ChannelId.SETTINGS_MAX_CHARGE_CURRENT, new UnsignedDoublewordElement(0x1016), DIRECT_1_TO_1)
 							.onUpdateCallback(val -> {
 								if (val == null) return;
 								this._setChargeMaxCurrent(val.intValue() / 1000); 
@@ -401,7 +423,7 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 						
 						// 0x101C: Discharge Current (UINT32, mA) -> DISCHARGE_MAX_CURRENT (A)
 						// FIX: mA -> A
-						m(JKBMSBattery.ChannelId.JK_SETTING_MAX_DISCHARGE_CURRENT, new UnsignedDoublewordElement(0x101C), DIRECT_1_TO_1)
+						m(JKBMSBattery.ChannelId.SETTINGS_MAX_DISCHARGE_CURRENT, new UnsignedDoublewordElement(0x101C), DIRECT_1_TO_1)
 							.onUpdateCallback(val -> {
 								if (val == null) return;
 								this._setDischargeMaxCurrent(val.intValue() / 1000); 
@@ -411,14 +433,19 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 						new DummyRegisterElement(0x101E, 0x1035),
 						
 						// 0x1036: CellCount
-						m(JKBMSBattery.ChannelId.JK_SETTING_CELL_COUNT, new UnsignedDoublewordElement(0x1036), DIRECT_1_TO_1),
+						m(JKBMSBattery.ChannelId.SETTINGS_CELL_COUNT, new UnsignedDoublewordElement(0x1036), DIRECT_1_TO_1),
 
-						// Gap 0x1038 - 0x103D
-						new DummyRegisterElement(0x1038, 0x103D),
+						// 0x1038: ChargeENABLE
+						m(JKBMSBattery.ChannelId.SETTINGS_CHARGE_ENABLE, new UnsignedDoublewordElement(0x1038), DIRECT_1_TO_1),
 						
-						
+						// 0x103A: DischargeENABLE
+						m(JKBMSBattery.ChannelId.SETTINGS_DISCHARGE_ENABLE, new UnsignedDoublewordElement(0x103A), DIRECT_1_TO_1),
+
+						// 0x103C: BalanceENABLE
+						m(JKBMSBattery.ChannelId.SETTINGS_BALANCE_ENABLE, new UnsignedDoublewordElement(0x103C), DIRECT_1_TO_1),
+				
 						// 0x103E: Battery Capacity (UINT32, mAH) -> CAPACITY (Wh)
-						m(JKBMSBattery.ChannelId.JK_SETTING_CAPACITY_AH, new UnsignedDoublewordElement(0x103E), DIRECT_1_TO_1)
+						m(JKBMSBattery.ChannelId.SETTINGS_CAPACITY_AH, new UnsignedDoublewordElement(0x103E), DIRECT_1_TO_1)
 							.onUpdateCallback(valMah -> {
 								if (valMah == null) return;
 								// Capacity [Wh] = Capacity [mAh] * Voltage [V] / 1000
@@ -429,25 +456,11 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 								if (voltageV != null) {
 									long capacityWh = (long) valMah * voltageV / 1000;
 									this._setCapacity((int) capacityWh);
-								}
-							})
-								));
+									}
+								})
+						)
+				);
 	}
 	
-	private void handleSocSoh(int rawWord) {
-		final int soc = rawWord & 0xFF;
-		final int soh = (rawWord >> 8) & 0xFF;
 
-		// Update Standard Battery Nature
-		this._setSoc(soc);
-		this._setSoh(soh);
-
-		// Update JK Specific Nature (wenn nicht gefiltert)
-		try {
-			this.channel(JKBMSBattery.ChannelId.SOC).setNextValue(soc);
-			this.channel(JKBMSBattery.ChannelId.SOH).setNextValue(soh);
-		} catch (Exception e) {
-			// Ignorieren, falls Channel gefiltert wurde
-		}
-	}
 }

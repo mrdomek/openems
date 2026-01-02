@@ -92,7 +92,6 @@ public interface JKBMSBattery extends OpenemsComponent {
 		TEMP_BAT_2_C(Doc.of(INTEGER).unit(DEGREE_CELSIUS).accessMode(READ_ONLY).text("Battery Temperature 2")),
 		TEMP_BAT_3_C(Doc.of(INTEGER).unit(DEGREE_CELSIUS).accessMode(READ_ONLY).text("Battery Temperature 3")),
 		TEMP_BAT_4_C(Doc.of(INTEGER).unit(DEGREE_CELSIUS).accessMode(READ_ONLY).text("Battery Temperature 4")),
-		TEMP_BAT_5_C(Doc.of(INTEGER).unit(DEGREE_CELSIUS).accessMode(READ_ONLY).text("Battery Temperature 5")),
 
 		// --- Pack values ---
 		BAT_VOLTAGE_MV(Doc.of(LONG).unit(MILLIVOLT).accessMode(READ_ONLY).text("Battery Voltage")),
@@ -113,7 +112,7 @@ public interface JKBMSBattery extends OpenemsComponent {
 		// --- Alarms / status ---
 		USER_ALARM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("User Alarm 1")),
 		USER_ALARM_2(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("User Alarm 2")),
-		MOS_TEMP_SENSOR_ABSENT(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("MOS Temp Sensor Absent")),
+		TEMP_SENSOR_ABSENT(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("MOS Temp Sensor Absent")),
 		PCL_MODULE_STATUS(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Protection Module Status")),
 
 		// --- Heater ---
@@ -124,12 +123,18 @@ public interface JKBMSBattery extends OpenemsComponent {
 		
 		// --- Settings aus Block 3 (0x1000) ---
 		// Wir lesen diese Werte und mappen sie intern auf die Battery-Nature
-		JK_SETTING_VOLTAGE_SOC_100(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Settings: Voltage at SOC 100%")),
-		JK_SETTING_VOLTAGE_SOC_0(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Settings: Voltage at SOC 0%")),
-		JK_SETTING_CAPACITY_AH(Doc.of(INTEGER).unit(MILLIAMPERE_HOURS).accessMode(READ_ONLY).text("Settings: Battery Capacity")),
-		JK_SETTING_MAX_CHARGE_CURRENT(Doc.of(INTEGER).unit(MILLIAMPERE).accessMode(READ_ONLY).text("Settings: Max Charge Current")),
-		JK_SETTING_MAX_DISCHARGE_CURRENT(Doc.of(INTEGER).unit(MILLIAMPERE).accessMode(READ_ONLY).text("Settings: Max Discharge Current")),
-		JK_SETTING_CELL_COUNT(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Settings: Cell Count"));
+		SETTINGS_CELL_UVP(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Settings: Cell under Voltage protection")),
+		SETTINGS_CELL_OVP(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Settings: Cell over Voltage protection%")),
+		SETTINGS_CELL_RCV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Settings: Cell requested charge voltage")),
+		SETTINGS_VOLTAGE_SOC_0(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Settings: Voltage at SOC 0%")),
+		SETTINGS_CAPACITY_AH(Doc.of(INTEGER).unit(MILLIAMPERE_HOURS).accessMode(READ_ONLY).text("Settings: Battery Capacity")),
+		SETTINGS_MAX_CHARGE_CURRENT(Doc.of(INTEGER).unit(MILLIAMPERE).accessMode(READ_ONLY).text("Settings: Max Charge Current")),
+		SETTINGS_MAX_DISCHARGE_CURRENT(Doc.of(INTEGER).unit(MILLIAMPERE).accessMode(READ_ONLY).text("Settings: Max Discharge Current")),
+		SETTINGS_CELL_COUNT(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Settings: Cell Count")),
+		SETTINGS_CHARGE_ENABLE (Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Settings: Charge Enable")),
+		SETTINGS_DISCHARGE_ENABLE (Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Settings: Discharge Enable")),
+		SETTINGS_BALANCE_ENABLE (Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Settings: Balance Enable")),
+		SETTINGS_HEAT_ENABLE (Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Settings: Heat Enable"));
 
 		private final Doc doc;
 
