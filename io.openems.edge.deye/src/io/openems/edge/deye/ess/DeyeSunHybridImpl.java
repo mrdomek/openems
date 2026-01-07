@@ -4,6 +4,7 @@ import static io.openems.edge.common.cycle.Cycle.DEFAULT_CYCLE_TIME;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
+
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -41,6 +42,7 @@ import io.openems.edge.bridge.modbus.api.element.UnsignedWordElement;
 import io.openems.edge.bridge.modbus.api.element.WordOrder;
 import io.openems.edge.bridge.modbus.api.task.FC16WriteRegistersTask;
 import io.openems.edge.bridge.modbus.api.task.FC3ReadRegistersTask;
+
 import io.openems.edge.common.component.ComponentManager;
 import io.openems.edge.common.component.OpenemsComponent;
 import io.openems.edge.common.cycle.Cycle;
@@ -48,18 +50,21 @@ import io.openems.edge.common.event.EdgeEventConstants;
 import io.openems.edge.common.modbusslave.ModbusSlave;
 import io.openems.edge.common.modbusslave.ModbusSlaveTable;
 import io.openems.edge.common.startstop.StartStop;
-import io.openems.edge.common.sum.GridMode;
 import io.openems.edge.common.taskmanager.Priority;
+
 import io.openems.edge.deye.battery.DeyeSunBattery;
 import io.openems.edge.deye.dccharger.DeyeDcCharger;
 import io.openems.edge.deye.enums.BatteryRunState;
 import io.openems.edge.deye.enums.EmsPowerMode;
+import io.openems.edge.deye.enums.RemoteMode;
 import io.openems.edge.deye.enums.WorkState;
+
 import io.openems.edge.ess.api.HybridEss;
 import io.openems.edge.ess.api.ManagedSymmetricEss;
 import io.openems.edge.ess.api.SymmetricEss;
 import io.openems.edge.ess.generic.common.CycleProvider;
 import io.openems.edge.ess.power.api.Power;
+
 import io.openems.edge.timedata.api.Timedata;
 import io.openems.edge.timedata.api.TimedataProvider;
 import io.openems.edge.timedata.api.utils.CalculateEnergyFromPower;
@@ -97,11 +102,11 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 	private final CalculateEnergyFromPower calculateDcDischargeEnergy = new CalculateEnergyFromPower(this,
 			HybridEss.ChannelId.DC_DISCHARGE_ENERGY);
 
-	private LocalDateTime lastDefineWorkState =  LocalDateTime.now();
+	private LocalDateTime lastDefineWorkState = LocalDateTime.now();
 
 	private boolean chargeMode = false;
 	private boolean lastHadCommError = false;
-	
+
 	@Reference
 	private ComponentManager componentManager;
 
@@ -164,7 +169,7 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 		}
 
 		this.config = config;
-		this._setWorkState(WorkState.UNDEFINED); //mrdomek: internal state channel
+		this._setWorkState(WorkState.UNDEFINED);
 	}
 
 	@Override
@@ -178,12 +183,6 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 		if (this.config.readOnlyMode()) {
 			return;
 		}
-
-		if (this.getWorkState() != WorkState.NORMAL) {
-			//mrdomek Ignore controller setpoints until inverter is fully ready (WorkState.NORMAL).
-			return;
-		}
-
 		log.debug("\n\n applyPower called by {} with {} W", Thread.currentThread().getStackTrace()[2].getClassName(),
 				activePower);
 		// AC 1/28/2024
@@ -191,29 +190,18 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 		// this.channel(DeyeSunHybrid.ChannelId.SET_GRID_LOAD_OFF_POWER);
 		// setGridLoadOffPowerChannel.setNextWriteValue(93);
 
-	    if (this.battery == null) {
-	        this.applyPowerHandler = null;
-	        this.allowedChargeDischargeHandler = null;
-	        return;
-	    }		
-		
-	    if (this.applyPowerHandler != null) {
-	    	// mrdomek: Do not write any power setpoints until MAX_APPARENT_POWER was read successfully (>0).
-	    	Integer maxApparentFromDevice = this.channel(SymmetricEss.ChannelId.MAX_APPARENT_POWER).value().asOptional()
-	    			.map(v -> ((Number) v).intValue())
-	    			.orElse(null);
+		if (this.battery == null) {
+			this.applyPowerHandler = null;
+			this.allowedChargeDischargeHandler = null;
+			return;
+		}
 
-	    	if (maxApparentFromDevice == null || maxApparentFromDevice <= 0) {
-	    		// mrdomek: Safety gate - no valid rated power -> do not feed in / do not write.
-	    		return;
-	    	}
+		if (this.applyPowerHandler != null) {
+			this.applyPowerHandler.apply(activePower, reactivePower, this.config.maxApparentPower());
+		}
 
-	    	this.applyPowerHandler.apply(activePower, reactivePower, maxApparentFromDevice);
-	    }
-		
 		this._setSoc(this.battery.getSoc().get());
 	}
-
 
 	public EmsPowerMode getEmsPowerMode() {
 		return this.config.emsPowerMode();
@@ -229,8 +217,7 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 		return new ModbusProtocol(this, //
 
 				new FC16WriteRegistersTask(128,
-						m(DeyeSunHybrid.ChannelId.SET_GRID_CHARGE_CURRENT, new UnsignedWordElement(128),
-								ElementToChannelConverter.SCALE_FACTOR_MINUS_3), //mrdomek: channel is mA, register is 1A -> /1000
+						m(DeyeSunHybrid.ChannelId.SET_GRID_CHARGE_CURRENT, new UnsignedWordElement(128)),
 						m(DeyeSunHybrid.ChannelId.SET_GENERATOR_CHARGING_ENABLE, new UnsignedWordElement(129)),
 						m(DeyeSunHybrid.ChannelId.SET_GRID_CHARGING_ENABLE, new UnsignedWordElement(130)),
 						new DummyRegisterElement(131, 140),
@@ -243,7 +230,7 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 				// UnsignedWordElement(146)),
 				new FC16WriteRegistersTask(146,
 						m(new BitsWordElement(146, this).bit(0, DeyeSunHybrid.ChannelId.SET_TIME_OF_USE_SELLING_ENABLED) // Common
-																														// switch
+																															// switch
 								.bit(1, DeyeSunHybrid.ChannelId.SET_TIME_OF_USE_MONDAY) //
 								.bit(2, DeyeSunHybrid.ChannelId.SET_TIME_OF_USE_TUESDAY) //
 								.bit(3, DeyeSunHybrid.ChannelId.SET_TIME_OF_USE_WEDNESDAY) //
@@ -286,27 +273,29 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 						m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_5, new UnsignedWordElement(176)),
 						m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_6, new UnsignedWordElement(177))),
 
-				new FC16WriteRegistersTask(1100,
-						m(DeyeSunHybrid.ChannelId.SET_REMOTE_MODE, new UnsignedWordElement(1100)),
+				new FC16WriteRegistersTask(1100, m(DeyeSunHybrid.ChannelId.REMOTE_MODE, new UnsignedWordElement(1100)),
 						m(DeyeSunHybrid.ChannelId.SET_REMOTE_WATCHDOG_TIME, new UnsignedWordElement(1101)),
-						new DummyRegisterElement(1102, 1103), //mrdomek: 1A/1B removed -> keep address space reserved
+						m(DeyeSunHybrid.ChannelId.PLACEHOLDER_1, new UnsignedWordElement(1102)),
+						m(DeyeSunHybrid.ChannelId.PLACEHOLDER_2, new UnsignedWordElement(1103)),
 						m(DeyeSunHybrid.ChannelId.SET_CONTROL_MODE, new UnsignedWordElement(1104)), // set 1 for battery control (DC); set 0 for AC-control
-						m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONTROL_MODE, new UnsignedWordElement(1105)), // set 2 for percentage control; set 3 for SOC control
+						m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONTROL_MODE, new UnsignedWordElement(1105)), // set 2 for percentage control (reg 1109); set 3 for SOC control (reg 1110)
 						m(DeyeSunHybrid.ChannelId.SET_3P_CONTROL_MODE, new UnsignedWordElement(1106)), // set 0 for 3p control via reg. 1111
-						m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONSTANT_VOLTAGE, new UnsignedWordElement(1107),
-								ElementToChannelConverter.SCALE_FACTOR_MINUS_1), //mrdomek: TODO verify unit/scale for mV channel
-						m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONSTANT_CURRENT, new UnsignedWordElement(1108),
-								ElementToChannelConverter.SCALE_FACTOR_MINUS_1), //mrdomek: TODO verify unit/scale for mA channel
-						m(DeyeSunHybrid.ChannelId.SET_BATTERY_POWER_PERCENT, new SignedWordElement(1109),
+						m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONSTANT_VOLTAGE, new UnsignedWordElement(1107)), // set 0 for 3p control via reg. 1111
+						m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONSTANT_CURRENT, new UnsignedWordElement(1108)), // set 0 for 3p control via reg. 1111
+						m(DeyeSunHybrid.ChannelId.SET_BATTERY_POWER_DECI_PERCENT, new SignedWordElement(1109)), // Set battery power as percentage from inverter power, i.e. 12kW inverter / 10% -> 1,2kW
+
+						
+						m(DeyeSunHybrid.ChannelId.SET_BATTERY_POWER_SOC, new SignedWordElement(1110), // set battery power as SoC percentage
 								ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
-						m(DeyeSunHybrid.ChannelId.SET_BATTERY_POWER_SOC, new SignedWordElement(1110),
-								ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
+
+						// set total AC power for all phases
 						m(DeyeSunHybrid.ChannelId.SET_AC_SETPOINT_3P_PERCENT, new SignedWordElement(1111))),
 
 				// ToDo: add register for individual phase control
 				// Read registers
 
-				new FC3ReadRegistersTask(3, Priority.LOW,
+				new FC3ReadRegistersTask(1, Priority.LOW,
+						m(SymmetricEss.ChannelId.GRID_MODE, new UnsignedWordElement(1)), new DummyRegisterElement(2),
 						m(DeyeSunHybrid.ChannelId.SERIAL_NUMBER, new StringWordElement(3, 5)),
 						new DummyRegisterElement(8, 19),
 						m(SymmetricEss.ChannelId.MAX_APPARENT_POWER,
@@ -318,7 +307,6 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 						m(DeyeSunHybrid.ChannelId.REMOTE_LOCK_STATE, new UnsignedWordElement(60)),
 
 						new DummyRegisterElement(61, 76),
-
 						m(DeyeSunHybrid.ChannelId.ACTIVE_POWER_REGULATION, new SignedWordElement(77),
 								ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
 						m(DeyeSunHybrid.ChannelId.REACTIVE_POWER_REGULATION, new SignedWordElement(78),
@@ -339,50 +327,33 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 
 						// Generator / grid charge settings
 						m(DeyeSunHybrid.ChannelId.GENERATOR_MAX_OPERATING_TIME, new UnsignedWordElement(121),
-								ElementToChannelConverter.SCALE_FACTOR_MINUS_1), // existing
-						//mrdomek: TODO convert 0.1h -> seconds if channel is Unit.SECONDS (needs non-decimal factor 360)
-
+								ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
 						m(DeyeSunHybrid.ChannelId.GENERATOR_COOLING_TIME, new UnsignedWordElement(122),
-								ElementToChannelConverter.SCALE_FACTOR_MINUS_1), // existing
-						//mrdomek: TODO convert 0.1h -> seconds if channel is Unit.SECONDS (needs non-decimal factor 360)
-
+								ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
 						m(DeyeSunHybrid.ChannelId.GENERATOR_CHARGING_START_VOLTAGE, new UnsignedWordElement(123),
-								ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: 0.01V -> mV (x10)
-
+								ElementToChannelConverter.SCALE_FACTOR_1),
 						m(DeyeSunHybrid.ChannelId.GENERATOR_CHARGING_START_CAPACITY, new UnsignedWordElement(124)),
-						//mrdomek: 1% -> percent integer (no scaling)
-
 						m(DeyeSunHybrid.ChannelId.GENERATOR_CHARGE_CURRENT, new UnsignedWordElement(125),
-								ElementToChannelConverter.SCALE_FACTOR_3), //mrdomek: 1A -> mA (x1000)
-
+								ElementToChannelConverter.SCALE_FACTOR_3), // mA
 						m(DeyeSunHybrid.ChannelId.GRID_CHARGING_START_VOLTAGE, new UnsignedWordElement(126),
-								ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: 0.01V -> mV (x10)
-
+								ElementToChannelConverter.SCALE_FACTOR_1),
 						m(DeyeSunHybrid.ChannelId.GRID_CHARGING_START_CAPACITY, new UnsignedWordElement(127)),
-						//mrdomek: 1% -> percent integer (no scaling)
-
 						m(DeyeSunHybrid.ChannelId.GRID_CHARGE_CURRENT, new UnsignedWordElement(128),
-								ElementToChannelConverter.SCALE_FACTOR_3), //mrdomek: 1A -> mA (x1000)
+								ElementToChannelConverter.SCALE_FACTOR_3), // mA
 						m(DeyeSunHybrid.ChannelId.GENERATOR_CHARGING_ENABLE, new UnsignedWordElement(129)),
 						m(DeyeSunHybrid.ChannelId.GRID_CHARGING_ENABLE, new UnsignedWordElement(130)),
 
 						// Power management and sell mode settings
 						m(DeyeSunHybrid.ChannelId.AC_COUPLE_FREQUENCY_LIMIT, new UnsignedWordElement(131),
-								ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: 0.01Hz -> mHz (x10)
-
+								ElementToChannelConverter.SCALE_FACTOR_1),
 						m(DeyeSunHybrid.ChannelId.FORCE_GENERATOR_AS_LOAD, new UnsignedWordElement(132)),
 						m(DeyeSunHybrid.ChannelId.GENERATOR_INPUT_AS_LOAD_ENABLE, new UnsignedWordElement(133)),
-
 						m(DeyeSunHybrid.ChannelId.SMARTLOAD_OFF_BATT_VOLTAGE, new UnsignedWordElement(134),
-								ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: 0.01V -> mV (x10)
+								ElementToChannelConverter.SCALE_FACTOR_1),
 						m(DeyeSunHybrid.ChannelId.SMARTLOAD_OFF_BATT_CAPACITY, new UnsignedWordElement(135)),
-						//mrdomek: 1% -> percent integer (no scaling)
-
 						m(DeyeSunHybrid.ChannelId.SMARTLOAD_ON_BATT_VOLTAGE, new UnsignedWordElement(136),
-								ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: 0.01V -> mV (x10)
+								ElementToChannelConverter.SCALE_FACTOR_1),
 						m(DeyeSunHybrid.ChannelId.SMARTLOAD_ON_BATT_CAPACITY, new UnsignedWordElement(137)),
-						//mrdomek: 1% -> percent integer (no scaling)
-
 						m(DeyeSunHybrid.ChannelId.OUTPUT_VOLTAGE_LEVEL, new UnsignedWordElement(138)),
 						m(DeyeSunHybrid.ChannelId.MIN_SOLAR_POWER_TO_START_GENERATOR, new UnsignedWordElement(139)),
 						m(DeyeSunHybrid.ChannelId.GEN_GRID_SIGNAL_ON, new UnsignedWordElement(140)),
@@ -395,7 +366,7 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 				// UnsignedWordElement(146)),
 				new FC3ReadRegistersTask(146, Priority.LOW,
 						m(new BitsWordElement(146, this).bit(0, DeyeSunHybrid.ChannelId.TIME_OF_USE_SELLING_ENABLED) // Common
-																													// switch
+																														// switch
 								.bit(1, DeyeSunHybrid.ChannelId.TIME_OF_USE_MONDAY) //
 								.bit(2, DeyeSunHybrid.ChannelId.TIME_OF_USE_TUESDAY) //
 								.bit(3, DeyeSunHybrid.ChannelId.TIME_OF_USE_WEDNESDAY) //
@@ -419,17 +390,17 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_6_POWER, new UnsignedWordElement(159)),
 
 						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_1_VOLTAGE, new UnsignedWordElement(160),
-								ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: keep existing; verify against Deye table for this register block
+								ElementToChannelConverter.SCALE_FACTOR_1),
 						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_2_VOLTAGE, new UnsignedWordElement(161),
-								ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: keep existing; verify against Deye table for this register block
+								ElementToChannelConverter.SCALE_FACTOR_1),
 						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_3_VOLTAGE, new UnsignedWordElement(162),
-								ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: keep existing; verify against Deye table for this register block
+								ElementToChannelConverter.SCALE_FACTOR_1),
 						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_4_VOLTAGE, new UnsignedWordElement(163),
-								ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: keep existing; verify against Deye table for this register block
+								ElementToChannelConverter.SCALE_FACTOR_1),
 						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_5_VOLTAGE, new UnsignedWordElement(164),
-								ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: keep existing; verify against Deye table for this register block
+								ElementToChannelConverter.SCALE_FACTOR_1),
 						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_6_VOLTAGE, new UnsignedWordElement(165),
-								ElementToChannelConverter.SCALE_FACTOR_1), //mrdomek: keep existing; verify against Deye table for this register block
+								ElementToChannelConverter.SCALE_FACTOR_1),
 
 						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_1_CAPACITY, new UnsignedWordElement(166)),
 						m(DeyeSunHybrid.ChannelId.SELL_MODE_TIME_POINT_2_CAPACITY, new UnsignedWordElement(167)),
@@ -445,82 +416,29 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 						m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_4, new UnsignedWordElement(175)),
 						m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_5, new UnsignedWordElement(176)),
 						m(DeyeSunHybrid.ChannelId.CHARGE_MODE_TIME_POINT_6, new UnsignedWordElement(177))
-
 				),
-				
-				//mrdomek Read Deye relay bitfield (reg 552) as raw value; GridMode is derived from one specific bit.
-				new FC3ReadRegistersTask(552, Priority.HIGH,
-				        m(DeyeSunHybrid.ChannelId.AC_RELAY_STATUS, new UnsignedWordElement(552))),
-
 
 				new FC3ReadRegistersTask(633, Priority.HIGH,
-		/*						
-
-						m(DeyeSunHybrid.ChannelId.BATTERY_TEMPERATURE, new UnsignedWordElement(586),
-								ElementToChannelConverter.SCALE_FACTOR_MINUS_2),
-						m(DeyeSunHybrid.ChannelId.BATTERY_VOLTAGE, new UnsignedWordElement(587),
-								ElementToChannelConverter.SCALE_FACTOR_1),
-						m(SymmetricEss.ChannelId.SOC, new UnsignedWordElement(588)), new DummyRegisterElement(589),
-						m(DeyeSunHybrid.ChannelId.BATTERY_OUTPUT_POWER, new SignedWordElement(590)),
-						m(DeyeSunHybrid.ChannelId.BATTERY_OUTPUT_CURRENT, new SignedWordElement(591),
-								ElementToChannelConverter.SCALE_FACTOR_1),
-						m(DeyeSunHybrid.ChannelId.BATTERY_CORRECTED_AH, new UnsignedWordElement(592))),
-
-				new FC3ReadRegistersTask(607, Priority.HIGH, // Outputs
-						/*
-						m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_ACTIVE_POWER, new SignedWordElement(607)),						
-						new DummyRegisterElement(608, 621),
-						// not totally clear. Maybe external generator is included?
-						m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_ACTIVE_POWER_L1, new SignedWordElement(622)),
-						m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_ACTIVE_POWER_L2, new SignedWordElement(623)),
-						m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_ACTIVE_POWER_L3, new SignedWordElement(624)),
-						//m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_ACTIVE_POWER, new SignedWordElement(625)),
-						new DummyRegisterElement(625,626),
-						m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_VOLTAGE_L1, new UnsignedWordElement(627),
-								ElementToChannelConverter.SCALE_FACTOR_2),
-						m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_VOLTAGE_L2, new UnsignedWordElement(628),
-								ElementToChannelConverter.SCALE_FACTOR_2),
-						m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_VOLTAGE_L3, new UnsignedWordElement(629),
-								ElementToChannelConverter.SCALE_FACTOR_2),
-
-						m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_CURRENT_L1, new SignedWordElement(630),
-								ElementToChannelConverter.SCALE_FACTOR_1),
-						m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_CURRENT_L2, new SignedWordElement(631),
-								ElementToChannelConverter.SCALE_FACTOR_1),
-						m(DeyeSunHybrid.ChannelId.GRID_OUTPUT_CURRENT_L3, new SignedWordElement(632),
-								ElementToChannelConverter.SCALE_FACTOR_1),
-		*/
 						m(DeyeSunHybrid.ChannelId.POWER_L1, new SignedWordElement(633)),
 						m(DeyeSunHybrid.ChannelId.POWER_L2, new SignedWordElement(634)),
 						m(DeyeSunHybrid.ChannelId.POWER_L3, new SignedWordElement(635)),
-						// m(DeyeSunHybrid.ChannelId.ACTIVE_POWER, new SignedWordElement(636)),
-						m(SymmetricEss.ChannelId.ACTIVE_POWER, new SignedWordElement(636)), // negative values for
-																							// Charge; positive for
-																							// Discharge
+						m(SymmetricEss.ChannelId.ACTIVE_POWER, new SignedWordElement(636)), // negative values for Charge; positive for Discharge
 						m(DeyeSunHybrid.ChannelId.APPARENT_POWER, new SignedWordElement(637))),
 
 				new FC3ReadRegistersTask(1100, Priority.LOW,
-						m(DeyeSunHybrid.ChannelId.SET_REMOTE_MODE, new UnsignedWordElement(1100)),
+						m(DeyeSunHybrid.ChannelId.REMOTE_MODE, new UnsignedWordElement(1100)),
 						m(DeyeSunHybrid.ChannelId.SET_REMOTE_WATCHDOG_TIME, new UnsignedWordElement(1101)),
-						new DummyRegisterElement(1102, 1103), //mrdomek: 1A/1B removed -> keep address space reserved
-						m(DeyeSunHybrid.ChannelId.SET_CONTROL_MODE, new UnsignedWordElement(1104)),
-						m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONTROL_MODE, new UnsignedWordElement(1105)),
-						m(DeyeSunHybrid.ChannelId.SET_3P_CONTROL_MODE, new UnsignedWordElement(1106)),
-						m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONSTANT_VOLTAGE, new UnsignedWordElement(1107),
-								ElementToChannelConverter.SCALE_FACTOR_MINUS_1), //mrdomek: TODO verify unit/scale for mV channel
-						m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONSTANT_CURRENT, new UnsignedWordElement(1108),
-								ElementToChannelConverter.SCALE_FACTOR_MINUS_1), //mrdomek: TODO verify unit/scale for mA channel
-						m(DeyeSunHybrid.ChannelId.SET_BATTERY_POWER_PERCENT, new SignedWordElement(1109),
-								ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
-						m(DeyeSunHybrid.ChannelId.SET_BATTERY_POWER_SOC, new SignedWordElement(1110),
-								ElementToChannelConverter.SCALE_FACTOR_MINUS_1),
-						m(DeyeSunHybrid.ChannelId.SET_AC_SETPOINT_3P_PERCENT, new SignedWordElement(1111),
-								ElementToChannelConverter.SCALE_FACTOR_MINUS_1))
+						new DummyRegisterElement(1102, 1103),
+						// m(DeyeSunHybrid.ChannelId.PLACEHOLDER_1, new UnsignedWordElement(1102)),
+						// m(DeyeSunHybrid.ChannelId.PLACEHOLDER_2, new UnsignedWordElement(1103)),
+						m(DeyeSunHybrid.ChannelId.SET_CONTROL_MODE, new UnsignedWordElement(1104)), // set 1 for battery control (DC); set 0 for AC-control
+						m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONTROL_MODE, new UnsignedWordElement(1105)), // set 2 for percentage control (reg 1109); set 3 for SOC control (reg 1110)
+						m(DeyeSunHybrid.ChannelId.SET_3P_CONTROL_MODE, new UnsignedWordElement(1106)), // set 0 for 3p control via reg. 1111
+						m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONSTANT_VOLTAGE, new UnsignedWordElement(1107)), // set 0 for 3p control via reg. 1111
+						m(DeyeSunHybrid.ChannelId.SET_BATTERY_CONSTANT_CURRENT, new UnsignedWordElement(1108)), // set 0 for 3p control via reg. 1111
+						m(DeyeSunHybrid.ChannelId.SET_BATTERY_POWER_DECI_PERCENT, new SignedWordElement(1109)))); // Set battery power as percentage from inverter power, i.e. 12kW inverter / 10% -> 1,2kW
 
-				);
 	}
-
-
 
 	@Override
 	protected void logInfo(Logger log, String message) {
@@ -532,23 +450,14 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 		return Stream
 				.of(DeyeSunHybrid.ChannelId.values(), SymmetricEss.ChannelId.values(),
 						ManagedSymmetricEss.ChannelId.values(), HybridEss.ChannelId.values())
-				.flatMap(Arrays::stream)
-				.map(id -> {
+				.flatMap(Arrays::stream).map(id -> {
 					try {
-						// mrdomek: Only print channels that currently have a value, otherwise debug output is dominated by UNDEFINED.
-						var opt = this.channel(id).value().asOptional();
-						if (opt == null || !opt.isPresent()) {
-							return null;
-						}
 						return id.name() + "=" + this.channel(id).value().asString();
 					} catch (Exception e) {
 						return id.name() + "=n/a";
 					}
-				})
-				.filter(s -> s != null)
-				.collect(Collectors.joining("; \n"));
+				}).collect(Collectors.joining("; \n"));
 	}
-
 
 	/**
 	 * Uses Info Log for further debug features.
@@ -582,12 +491,7 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 																														// Discharge
 				+ ";" + "|Allowed:"
 				+ this.channel(ManagedSymmetricEss.ChannelId.ALLOWED_CHARGE_POWER).value().asStringWithoutUnit() + ";"
-				+ this.channel(ManagedSymmetricEss.ChannelId.ALLOWED_DISCHARGE_POWER).value().asString()
-				+ ";|AcRelayStatus="
-				+ this.channel(DeyeSunHybrid.ChannelId.AC_RELAY_STATUS).value().asStringWithoutUnit() //mrdomek Raw reg 552 for troubleshooting bit logic.
-				+ ";|GridMode="
-				+ this.channel(SymmetricEss.ChannelId.GRID_MODE).value().asString(); //mrdomek Derived from AC_RELAY_STATUS bit2.
-
+				+ this.channel(ManagedSymmetricEss.ChannelId.ALLOWED_DISCHARGE_POWER).value().asString();
 	}
 
 	@Override
@@ -604,46 +508,17 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 		case EdgeEventConstants.TOPIC_CYCLE_BEFORE_CONTROLLERS:
 			// this.calculateAllowedChargeDischargePower();
 			this.getAndSetChannels();
-			this.updateGridModeFromRelayStatus();
-			this.defineWorkState();
-
-			if (this.getWorkState() != WorkState.NORMAL || this.allowedChargeDischargeHandler == null) {
-				//mrdomek Controller handshake: publish zero allowed power until inverter is fully ready.
-				this.channel(ManagedSymmetricEss.ChannelId.ALLOWED_CHARGE_POWER).setNextValue(0);
-				this.channel(ManagedSymmetricEss.ChannelId.ALLOWED_DISCHARGE_POWER).setNextValue(0);
-				break;
-			}
-
 			this.allowedChargeDischargeHandler.accept(this.componentManager);
 			/*
 			 * if (this.applyPowerHandler != null) {
 			 * this.applyPowerHandler.calculateMaxAcPower(this.getMaxApparentPower().orElse(
 			 * 0)); }
 			 */
+			this.defineWorkState();
 			break;
 		}
 	}
 
-	private void updateGridModeFromRelayStatus() {
-	    //mrdomek GridMode must be derived from one bit of the relay bitfield, not from the full register value.
-	    final Integer relayStatus = this.channel(DeyeSunHybrid.ChannelId.AC_RELAY_STATUS)
-	            .value().asOptional()
-	            .map(v -> ((Number) v).intValue())
-	            .orElse(null);
-
-	    if (relayStatus == null) {
-	        this.channel(SymmetricEss.ChannelId.GRID_MODE).setNextValue(GridMode.UNDEFINED);
-	        return;
-	    }
-
-	    //mrdomek Using bit2 as "grid" indicator; other bits represent other relays and must not affect GridMode.
-	    final boolean onGrid = (relayStatus & 0x0004) != 0; // bit2
-
-	    this.channel(SymmetricEss.ChannelId.GRID_MODE)
-	            .setNextValue(onGrid ? GridMode.ON_GRID : GridMode.OFF_GRID);
-	}
-
-	
 	private void defineWorkState() {
 		/*
 		 * Set ESS in running mode
@@ -651,33 +526,31 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 		// TODO this should be smarter: set in energy saving mode if there was no output
 		// power for a while and we don't need emergency power.
 		if (this.getWorkState() != WorkState.NORMAL || this.lastDefineWorkState == null) {
-			
-			this.logDebug(this.log, "Battery: " + this.battery
-					+ " Running: " + this.battery.isStarted()
-					+ " RunState: " +  this.battery.getRunState().toString()
-					+ ""
-					+ "");
-			
-			if (this.battery == null || this.battery.getStartStop() != StartStop.START || this.battery.getRunState() != BatteryRunState.NORMAL ) {
+
+			this.logDebug(this.log, "Battery: " + this.battery + " Running: " + this.battery.isStarted() + " RunState: "
+					+ this.battery.getRunState().toString() + "" + "");
+
+			if (this.battery == null || this.battery.getStartStop() != StartStop.START
+					|| this.battery.getRunState() != BatteryRunState.NORMAL) {
 				this.changeState(WorkState.WARNING);
 				this.logWarn(log, "No battery connected or not fully initialzied");
 				return;
 			}
 
-	        // --- BMS COMMUNICATION ERROR handling ---
-	        boolean commError = DeyeSunHybrid.isBmsCommError(this);
-	        if (commError) {
-	            // set battery offine
-	            battery.setOfflineByExternal("BMS Communication Error");
-	            lastHadCommError = true;
-	        } else if (lastHadCommError) {
-	            // 
-	            battery.clearExternalOffline();
-	            lastHadCommError = false;
-	        }			
-			
+			// --- BMS COMMUNICATION ERROR handling ---
+			boolean commError = DeyeSunHybrid.isBmsCommError(this);  // ToDo: move to battery
+			if (commError) {
+				// set battery offine
+				battery.setOfflineByExternal("BMS Communication Error");
+				lastHadCommError = true;
+			} else if (lastHadCommError) {
+				//
+				battery.clearExternalOffline();
+				lastHadCommError = false;
+			}
+
 			if (this.dcCharger == null) {
-				this.changeState(WorkState.WARNING);						
+				this.changeState(WorkState.WARNING);
 				this.logWarn(log, "DC Charger not connected or not fully initialized");
 				return;
 			}
@@ -685,28 +558,37 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 			// Charge from grid is not allowed at startup
 			if (!this.checkEssInitialValues()) {
 				this.setEssInitialValues();
-				this.changeState(WorkState.INITIALIZING);				
+				this.changeState(WorkState.INITIALIZING);
 				return;
 			}
 
 			if (this.battery.hasError()) {
-				
-				this.changeState(WorkState.ERROR);				
+
+				this.changeState(WorkState.ERROR);
 				this.logError(log, "Error in battery component");
 				return;
 			}
-
+ 
 			if (this.dcCharger.hasError()) {
 				this.changeState(WorkState.ERROR);
 				this.logError(log, "Error in DC Charger component");
 				return;
 			}
 
+			if (this.getRemoteMode() != RemoteMode.ON) {
+				try {
+					this.setRemoteMode(RemoteMode.ON);
+				} catch (OpenemsNamedException e) { // only got to normal state if remote mode is turned on
+					this.logError(this.log, "Unable to set Remote Mode ESS: " + e.getMessage());
+					return;
+				}
+			}
+
 			this._setWorkState(WorkState.NORMAL);
 
 		}
 	}
-	
+
 	/**
 	 * Changes the state if hysteresis time passed, to avoid too quick changes.
 	 *
@@ -715,21 +597,21 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 	 */
 	private boolean changeState(WorkState nextState) {
 		var now = LocalDateTime.now();
-		
+
 		// avoid early transistions
-		if(!now.minusSeconds(20).isAfter(this.lastDefineWorkState)) {
+		if (!now.minusSeconds(20).isAfter(this.lastDefineWorkState)) {
 			return false;
 		}
 		this.lastDefineWorkState = now;
-		
+
 		if (this.getWorkState() == nextState) {
 			return false;
 		}
-		
+
 		this._setWorkState(nextState);
 		return true;
 	}
-	
+
 	@Override
 	public Power getPower() {
 		return this.power;
@@ -763,19 +645,15 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 		return this.timedata;
 	}
 
-
 	public void getAndSetChannels() {
 		if (this.battery == null) {
 			this.logError(log, "No battery connected. No value for DC Discharge available");
 			return;
 		}
 
-		//mrdomek: SoC is sourced from battery component; must be updated even when applyPower() is gated by WorkState.
-		final Integer soc = this.battery.getSoc().get();
-		this._setSoc(soc);
-
 		Integer dcPower = this.battery.getDcPower().get();
 		this._setDcDischargePower(dcPower); // channel of HybridEss
+
 	}
 
 	private void calculateEnergy() {
@@ -871,16 +749,21 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 	public boolean checkEssInitialValues() {
 		boolean ok = false;
 
-
 		try {
+			/*
+			 * // should be 255 on register 146 ok = !this.getTimeOfUseSellingEnabled() &&
+			 * !this.getTimeOfUseMonday() && !this.getTimeOfUseTuesday() &&
+			 * !this.getTimeOfUseWednesday() && !this.getTimeOfUseThursday() &&
+			 * !this.getTimeOfUseFriday() && !this.getTimeOfUseSaturday() &&
+			 * !this.getTimeOfUseSunday() // Time Points &&
+			 * this.getSellModeTimePoint1().get() == 0 && this.getSellModeTimePoint2().get()
+			 * == 2355 && this.getChargeModeTimePoint1().get() == 3 &&
+			 * this.getChargeModeTimePoint2().get() == 3 // &&
+			 * (this.getLimitControlFunction() == LimitControlFunction.SELLING_ACTIVE) &&
+			 * (this.getPowerToGridTarget().get() == this.config.maxSellToGridPower());
+			 */
 			// should be 255 on register 146
-			ok = !this.getTimeOfUseSellingEnabled() && !this.getTimeOfUseMonday() && !this.getTimeOfUseTuesday()
-					&& !this.getTimeOfUseWednesday() && !this.getTimeOfUseThursday() && !this.getTimeOfUseFriday()
-					&& !this.getTimeOfUseSaturday() && !this.getTimeOfUseSunday()
-					// Time Points
-					&& this.getSellModeTimePoint1().get() == 0 && this.getSellModeTimePoint2().get() == 2355
-					&& this.getChargeModeTimePoint1().get() == 3 && this.getChargeModeTimePoint2().get() == 3
-					//&& (this.getLimitControlFunction() == LimitControlFunction.SELLING_ACTIVE)
+			ok = !this.getTimeOfUseSellingEnabled()
 					&& (this.getPowerToGridTarget().get() == this.config.maxSellToGridPower());
 		} catch (Exception e) {
 			this.logError(this.log, "Unable to get initial values. ERROR: " + e.getMessage());
@@ -891,25 +774,23 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 	public void setEssInitialValues() {
 
 		try {
-			this.setTimeOfUseSellingEnabled(false);
-			this.setTimeOfUseMonday(false);
-			this.setTimeOfUseTuesday(false);
-			this.setTimeOfUseWednesday(false);
-			this.setTimeOfUseThursday(false);
-			this.setTimeOfUseFriday(false);
-			this.setTimeOfUseSaturday(false);
-			this.setTimeOfUseSunday(false);
+			this.setRemoteMode(RemoteMode.OFF); // for setting values remote mode needs to be off
+			/*
+			 * this.setTimeOfUseSellingEnabled(false); this.setTimeOfUseMonday(false);
+			 * this.setTimeOfUseTuesday(false); this.setTimeOfUseWednesday(false);
+			 * this.setTimeOfUseThursday(false); this.setTimeOfUseFriday(false);
+			 * this.setTimeOfUseSaturday(false); this.setTimeOfUseSunday(false);
+			 * 
+			 * this.setSellModeTimePoint1(0); this.setSellModeTimePoint2(2355);
+			 * 
+			 * // Allow Charge from grid / generator this.setChargeModeTimePoint1(3);
+			 * this.setChargeModeTimePoint2(3);
+			 */
+			// this.setLimitControlFunction(LimitControlFunction.SELLING_ACTIVE);
 
-			this.setSellModeTimePoint1(0);
-			this.setSellModeTimePoint2(2355);
-
-			// Allow Charge from grid / generator
-			this.setChargeModeTimePoint1(3);
-			this.setChargeModeTimePoint2(3);
-			//this.setLimitControlFunction(LimitControlFunction.SELLING_ACTIVE); 
-			
 			// max power to grid including pv production
-			this._setPowerToGridTarget(this.config.maxSellToGridPower());
+			// has to be set while NOT in remote mode
+			this.setPowerToGridTarget(this.config.maxSellToGridPower());
 
 		} catch (OpenemsNamedException e) {
 			this.logError(this.log, "Unable to set initial values for ESS: " + e.getMessage());
@@ -921,31 +802,27 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 		return this.chargeMode;
 	}
 
-	// used for charge from grid and discharging
-	public void setChargeDischargeMode(boolean enableChargeMode, int targetPower) {
-
-
-		int capacity = this.config.minBatteryCapacity();
-
-		try {
-			if (enableChargeMode) {
-				capacity = this.battery.getBatteryCapacity().getOrError();
-			}
-
-			// To allow charging, set target capacity to 5%, to allow charge from grid we
-			// have to set full battery capacity
-			if (this.getSellModeTimePoint1Capacity().get() == null || this.getSellModeTimePoint1Capacity().get() != capacity ) {
-				this.setSellModeTimePoint1Capacity(capacity);
-			}
-			
-			this.setSellModeTimePoint1Power(targetPower);
-
-			this.chargeMode = enableChargeMode;
-		} catch (OpenemsNamedException e) {
-			this.logError(this.log, "Unable to get capacity " + e.getMessage());
-		}
-
-	}
-
+	/*
+	 * 2025 12 16 Klinki: deprecated // used for charge from grid and discharging
+	 * public void setChargeDischargeMode(boolean enableChargeMode, int targetPower)
+	 * {
+	 * 
+	 * int capacity = this.config.minBatteryCapacity();
+	 * 
+	 * try { if (enableChargeMode) { capacity =
+	 * this.battery.getBatteryCapacity().getOrError(); }
+	 * 
+	 * // To allow charging, set target capacity to 5%, to allow charge from grid we
+	 * // have to set full battery capacity if
+	 * (this.getSellModeTimePoint1Capacity().get() == null ||
+	 * this.getSellModeTimePoint1Capacity().get() != capacity) {
+	 * this.setSellModeTimePoint1Capacity(capacity); }
+	 * 
+	 * this.setSellModeTimePoint1Power(targetPower);
+	 * 
+	 * this.chargeMode = enableChargeMode; } catch (OpenemsNamedException e) {
+	 * this.logError(this.log, "Unable to get capacity " + e.getMessage()); }
+	 * 
+	 * }
+	 */
 }
-

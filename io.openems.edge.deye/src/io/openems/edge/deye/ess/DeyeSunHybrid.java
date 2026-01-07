@@ -31,6 +31,7 @@ import io.openems.edge.deye.enums.GridStandard;
 import io.openems.edge.deye.enums.InverterRunState;
 import io.openems.edge.deye.enums.LimitControlFunction;
 import io.openems.edge.deye.enums.RemoteLockState;
+import io.openems.edge.deye.enums.RemoteMode;
 import io.openems.edge.deye.enums.WorkState;
 import io.openems.edge.ess.api.ManagedSymmetricEss;
 import io.openems.edge.ess.api.SymmetricEss;
@@ -65,11 +66,10 @@ public interface DeyeSunHybrid
 				.accessMode(AccessMode.READ_WRITE)), //
 
 		TARGET_ACTIVE_POWER(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.WATT)
-				.persistencePriority(PersistencePriority.HIGH)), //
+				.unit(Unit.WATT).persistencePriority(PersistencePriority.HIGH)), //
 
 		TARGET_CURRENT(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.MILLIAMPERE) //mrdomek: OpenEMS best-practice: current in mA as Integer
+				.unit(Unit.MILLIAMPERE) // mrdomek: OpenEMS best-practice: current in mA as Integer
 				.persistencePriority(PersistencePriority.HIGH)), //
 
 		// EnumReadChannels
@@ -92,8 +92,7 @@ public interface DeyeSunHybrid
 				.accessMode(AccessMode.READ_WRITE)), //
 
 		RATED_POWER(Doc.of(OpenemsType.LONG) //
-				.unit(Unit.WATT)
-				.accessMode(AccessMode.READ_ONLY)), //
+				.unit(Unit.WATT).accessMode(AccessMode.READ_ONLY)), //
 
 		REMOTE_LOCK_STATE(Doc.of(RemoteLockState.values()) //
 				.accessMode(AccessMode.READ_WRITE)), //
@@ -225,51 +224,42 @@ public interface DeyeSunHybrid
 
 		// BMS Metrics (read registers from inverter)
 		BATTERY_TEMPERATURE(Doc.of(OpenemsType.INTEGER) // register 586
-				.unit(Unit.DEGREE_CELSIUS)
-				.accessMode(AccessMode.READ_ONLY)),
+				.unit(Unit.DEGREE_CELSIUS).accessMode(AccessMode.READ_ONLY)),
 		BATTERY_VOLTAGE(Doc.of(OpenemsType.INTEGER) // register 587
-				.unit(Unit.MILLIVOLT) //mrdomek: OpenEMS best-practice: voltage in mV as Integer
+				.unit(Unit.MILLIVOLT) // mrdomek: OpenEMS best-practice: voltage in mV as Integer
 				.accessMode(AccessMode.READ_ONLY)),
 		BATTERY_SOC(Doc.of(OpenemsType.INTEGER) // register 588
-				.unit(Unit.PERCENT)
-				.accessMode(AccessMode.READ_ONLY)),
+				.unit(Unit.PERCENT).accessMode(AccessMode.READ_ONLY)),
 		BATTERY_OUTPUT_POWER(Doc.of(OpenemsType.INTEGER) // register 590
-				.unit(Unit.WATT)
-				.accessMode(AccessMode.READ_ONLY)),
+				.unit(Unit.WATT).accessMode(AccessMode.READ_ONLY)),
 		BATTERY_OUTPUT_CURRENT(Doc.of(OpenemsType.INTEGER) // register 591
-				.unit(Unit.MILLIAMPERE) //mrdomek: OpenEMS best-practice: current in mA as Integer
+				.unit(Unit.MILLIAMPERE) // mrdomek: OpenEMS best-practice: current in mA as Integer
 				.accessMode(AccessMode.READ_ONLY)),
 		BATTERY_CORRECTED_AH(Doc.of(OpenemsType.INTEGER) // register 592
-				.unit(Unit.AMPERE_HOURS)
-				.accessMode(AccessMode.READ_ONLY)), //
+				.unit(Unit.AMPERE_HOURS).accessMode(AccessMode.READ_ONLY)), //
 
 		// Generator / grid charging settings (read-only)
 		GENERATOR_MAX_OPERATING_TIME(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.SECONDS)
-				.accessMode(AccessMode.READ_ONLY)), //
+				.unit(Unit.SECONDS).accessMode(AccessMode.READ_ONLY)), //
 		GENERATOR_COOLING_TIME(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.SECONDS)
-				.accessMode(AccessMode.READ_ONLY)), //
+				.unit(Unit.SECONDS).accessMode(AccessMode.READ_ONLY)), //
 		GENERATOR_CHARGING_START_VOLTAGE(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.MILLIVOLT)
-				.accessMode(AccessMode.READ_ONLY)), //
+				.unit(Unit.MILLIVOLT).accessMode(AccessMode.READ_ONLY)), //
 		GENERATOR_CHARGING_START_CAPACITY(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.PERCENT)
-				.accessMode(AccessMode.READ_ONLY)), //
+				.unit(Unit.PERCENT).accessMode(AccessMode.READ_ONLY)), //
 		GENERATOR_CHARGE_CURRENT(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.MILLIAMPERE) //mrdomek: OpenEMS best-practice: current in mA as Integer
+				.unit(Unit.MILLIAMPERE) // mrdomek: OpenEMS best-practice: current in mA as Integer
 				.accessMode(AccessMode.READ_ONLY)), //
 		GRID_CHARGING_START_VOLTAGE(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.MILLIVOLT) //mrdomek: OpenEMS best-practice: voltage in mV as Integer
+				.unit(Unit.MILLIVOLT) // mrdomek: OpenEMS best-practice: voltage in mV as Integer
 				.accessMode(AccessMode.READ_ONLY)), //
 		GRID_CHARGING_START_CAPACITY(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.PERCENT)
-				.accessMode(AccessMode.READ_ONLY)), //
+				.unit(Unit.PERCENT).accessMode(AccessMode.READ_ONLY)), //
 		GRID_CHARGE_CURRENT(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.MILLIAMPERE) //mrdomek: OpenEMS best-practice: current in mA as Integer
+				.unit(Unit.MILLIAMPERE) // mrdomek: OpenEMS best-practice: current in mA as Integer
 				.accessMode(AccessMode.READ_ONLY)), //
 		SET_GRID_CHARGE_CURRENT(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.MILLIAMPERE) //mrdomek: OpenEMS best-practice: current in mA as Integer
+				.unit(Unit.MILLIAMPERE) // mrdomek: OpenEMS best-practice: current in mA as Integer
 				.accessMode(AccessMode.WRITE_ONLY)), //
 		GENERATOR_CHARGING_ENABLE(Doc.of(OpenemsType.BOOLEAN) //
 				.accessMode(AccessMode.READ_ONLY)), //
@@ -282,30 +272,24 @@ public interface DeyeSunHybrid
 
 		// Power management & sell-mode settings (read-only)
 		AC_COUPLE_FREQUENCY_LIMIT(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.MILLIHERTZ) //mrdomek: OpenEMS best-practice: frequency in mHz as Integer
+				.unit(Unit.MILLIHERTZ) // mrdomek: OpenEMS best-practice: frequency in mHz as Integer
 				.accessMode(AccessMode.READ_ONLY)), //
 		FORCE_GENERATOR_AS_LOAD(Doc.of(OpenemsType.INTEGER) //
 				.accessMode(AccessMode.READ_ONLY)), //
 		GENERATOR_INPUT_AS_LOAD_ENABLE(Doc.of(OpenemsType.INTEGER) //
 				.accessMode(AccessMode.READ_ONLY)), //
 		SMARTLOAD_OFF_BATT_VOLTAGE(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.MILLIVOLT)
-				.accessMode(AccessMode.READ_ONLY)), //
+				.unit(Unit.MILLIVOLT).accessMode(AccessMode.READ_ONLY)), //
 		SMARTLOAD_OFF_BATT_CAPACITY(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.PERCENT)
-				.accessMode(AccessMode.READ_ONLY)), //
+				.unit(Unit.PERCENT).accessMode(AccessMode.READ_ONLY)), //
 		SMARTLOAD_ON_BATT_VOLTAGE(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.MILLIVOLT)
-				.accessMode(AccessMode.READ_ONLY)), //
+				.unit(Unit.MILLIVOLT).accessMode(AccessMode.READ_ONLY)), //
 		SMARTLOAD_ON_BATT_CAPACITY(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.PERCENT)
-				.accessMode(AccessMode.READ_ONLY)), //
+				.unit(Unit.PERCENT).accessMode(AccessMode.READ_ONLY)), //
 		OUTPUT_VOLTAGE_LEVEL(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.VOLT)
-				.accessMode(AccessMode.READ_ONLY)), //
+				.unit(Unit.VOLT).accessMode(AccessMode.READ_ONLY)), //
 		MIN_SOLAR_POWER_TO_START_GENERATOR(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.WATT)
-				.accessMode(AccessMode.READ_ONLY)), //
+				.unit(Unit.WATT).accessMode(AccessMode.READ_ONLY)), //
 		GEN_GRID_SIGNAL_ON(Doc.of(OpenemsType.INTEGER) //
 				.accessMode(AccessMode.READ_ONLY)), //
 
@@ -318,8 +302,7 @@ public interface DeyeSunHybrid
 				.accessMode(AccessMode.WRITE_ONLY)), //
 
 		LIMIT_MAX_GRID_OUTPUT_POWER(Doc.of(OpenemsType.INTEGER) //
-				.unit(Unit.WATT)
-				.accessMode(AccessMode.READ_ONLY)), //
+				.unit(Unit.WATT).accessMode(AccessMode.READ_ONLY)), //
 
 		EXTERNAL_CURRENT_SENSOR_CLAMP_PHASE(Doc.of(OpenemsType.INTEGER) //
 				.accessMode(AccessMode.READ_ONLY)), //
@@ -413,13 +396,14 @@ public interface DeyeSunHybrid
 		F64(Doc.of(Level.FAULT).text("Heat sink temperature too high")), //
 
 		// EnumWriteChannels
-		WORK_STATE(Doc.of(WorkState.values()).accessMode(AccessMode.READ_ONLY)), //mrdomek: internal component state, no external write
+		WORK_STATE(Doc.of(WorkState.values()).accessMode(AccessMode.READ_WRITE)),
 
 		// IntegerWriteChannel
 		SET_ACTIVE_POWER(Doc.of(OpenemsType.INTEGER).unit(Unit.WATT).accessMode(AccessMode.WRITE_ONLY)), //
-		SET_REACTIVE_POWER(Doc.of(OpenemsType.INTEGER).unit(Unit.VOLT_AMPERE_REACTIVE).accessMode(AccessMode.WRITE_ONLY)), //
+		SET_REACTIVE_POWER(
+				Doc.of(OpenemsType.INTEGER).unit(Unit.VOLT_AMPERE_REACTIVE).accessMode(AccessMode.WRITE_ONLY)), //
 
-		POWER_TO_GRID_TARGET(Doc.of(OpenemsType.INTEGER).unit(Unit.WATT).accessMode(AccessMode.READ_WRITE)), //mrdomek: Deye "Max sell power" is W, not VA
+		POWER_TO_GRID_TARGET(Doc.of(OpenemsType.INTEGER).unit(Unit.WATT).accessMode(AccessMode.READ_WRITE)),
 
 		SET_GEN_PEAK_SHAVING_POWER(Doc.of(OpenemsType.INTEGER).unit(Unit.WATT).accessMode(AccessMode.WRITE_ONLY)), //
 		SET_GRID_PEAK_SHAVING_POWER(Doc.of(OpenemsType.INTEGER).unit(Unit.WATT).accessMode(AccessMode.WRITE_ONLY)), //
@@ -427,8 +411,8 @@ public interface DeyeSunHybrid
 		INVERTER_RUN_STATE(Doc.of(InverterRunState.values()).accessMode(AccessMode.READ_ONLY)), //
 
 		// LongReadChannel
-		ORIGINAL_ACTIVE_CHARGE_ENERGY(Doc.of(OpenemsType.LONG).unit(Unit.WATT_HOURS)), //mrdomek: OpenEMS best-practice: energy in Wh as Long
-		ORIGINAL_ACTIVE_DISCHARGE_ENERGY(Doc.of(OpenemsType.LONG).unit(Unit.WATT_HOURS)), //mrdomek: OpenEMS best-practice: energy in Wh as Long
+		ORIGINAL_ACTIVE_CHARGE_ENERGY(Doc.of(OpenemsType.LONG).unit(Unit.WATT_HOURS)),
+		ORIGINAL_ACTIVE_DISCHARGE_ENERGY(Doc.of(OpenemsType.LONG).unit(Unit.WATT_HOURS)),
 
 		// Inverter Output includes external generator?
 		GRID_OUTPUT_ACTIVE_POWER_L1(Doc.of(OpenemsType.INTEGER).unit(Unit.WATT).accessMode(AccessMode.READ_ONLY)), //
@@ -448,25 +432,30 @@ public interface DeyeSunHybrid
 		POWER_L2(Doc.of(OpenemsType.INTEGER).unit(Unit.WATT).accessMode(AccessMode.READ_ONLY)), //
 		POWER_L3(Doc.of(OpenemsType.INTEGER).unit(Unit.WATT).accessMode(AccessMode.READ_ONLY)), //
 
-		SET_REMOTE_MODE(Doc.of(OpenemsType.INTEGER).accessMode(AccessMode.READ_WRITE)), //
+		REMOTE_MODE(Doc.of(RemoteMode.values()).accessMode(AccessMode.READ_WRITE)), //
+//		SET_REMOTE_MODE(Doc.of(OpenemsType.INTEGER).accessMode(AccessMode.READ_WRITE)), //
 		SET_CONTROL_MODE(Doc.of(OpenemsType.INTEGER).accessMode(AccessMode.READ_WRITE)), //
 		SET_BATTERY_CONTROL_MODE(Doc.of(OpenemsType.INTEGER).accessMode(AccessMode.READ_WRITE)), //
 		SET_3P_CONTROL_MODE(Doc.of(OpenemsType.INTEGER).accessMode(AccessMode.READ_WRITE)), //
 
-		SET_BATTERY_POWER_PERCENT(Doc.of(OpenemsType.INTEGER).unit(Unit.PERCENT).accessMode(AccessMode.READ_WRITE)), //
+		SET_BATTERY_POWER_DECI_PERCENT(Doc.of(OpenemsType.INTEGER).accessMode(AccessMode.READ_WRITE)), //
 		SET_BATTERY_POWER_SOC(Doc.of(OpenemsType.INTEGER).unit(Unit.PERCENT).accessMode(AccessMode.READ_WRITE)), //
 		SET_AC_SETPOINT_3P_PERCENT(Doc.of(OpenemsType.INTEGER).accessMode(AccessMode.READ_WRITE)), //
 		SET_REMOTE_WATCHDOG_TIME(Doc.of(OpenemsType.INTEGER).accessMode(AccessMode.READ_WRITE)), //
 
 		// ToDo: Set right units and scaling
-		SET_BATTERY_CONSTANT_VOLTAGE(Doc.of(OpenemsType.INTEGER).unit(Unit.MILLIVOLT).accessMode(AccessMode.READ_WRITE)), //mrdomek: voltage in mV as Integer
-		SET_BATTERY_CONSTANT_CURRENT(Doc.of(OpenemsType.INTEGER).unit(Unit.MILLIAMPERE).accessMode(AccessMode.READ_WRITE)), //mrdomek: current in mA as Integer
-		//mrdomek Removed 1A/1B placeholders (previously called FUCKOFF_1/2).
+		SET_BATTERY_CONSTANT_VOLTAGE(
+				Doc.of(OpenemsType.INTEGER).unit(Unit.MILLIVOLT).accessMode(AccessMode.READ_WRITE)),
+		SET_BATTERY_CONSTANT_CURRENT(
+				Doc.of(OpenemsType.INTEGER).unit(Unit.MILLIAMPERE).accessMode(AccessMode.READ_WRITE)),
 
 		APPARENT_POWER(Doc.of(OpenemsType.INTEGER).unit(Unit.VOLT_AMPERE)), //
-		AC_RELAY_STATUS(Doc.of(OpenemsType.INTEGER) //
-		        .accessMode(AccessMode.READ_ONLY) //
-		        .unit(Unit.NONE)), //mrdomek Raw reg 552 bitfield; GridMode is derived from one specific bit.
+
+		PLACEHOLDER_1(Doc.of(OpenemsType.INTEGER) //
+				.accessMode(AccessMode.WRITE_ONLY)), //
+
+		PLACEHOLDER_2(Doc.of(OpenemsType.INTEGER) //
+				.accessMode(AccessMode.WRITE_ONLY)), //
 
 		;
 
@@ -480,6 +469,7 @@ public interface DeyeSunHybrid
 		public Doc doc() {
 			return this.doc;
 		}
+
 	}
 
 	// -----------------------------------------------------------------------------
@@ -494,8 +484,18 @@ public interface DeyeSunHybrid
 		return this.getWorkStateChannel().value().asEnum();
 	}
 
+	/**
+	 * Internal method to set {@link WorkState} of this component.
+	 *
+	 * <p>
+	 * The value is written to the corresponding Channel using
+	 * {@link io.openems.edge.common.channel.Channel#setNextValue(Object)} and will
+	 * be applied in the next processing cycle.
+	 * </p>
+	 *
+	 * @param value the new {@link WorkState} to set
+	 */
 	public default void _setWorkState(WorkState value) {
-		//mrdomek: internal state -> setNextValue (no "write" semantics, must not throw)
 		this.getWorkStateChannel().setNextValue(value);
 	}
 
@@ -593,13 +593,24 @@ public interface DeyeSunHybrid
 
 	// --- Remote mode + control registers (used in ApplyPowerHandler) ---
 
-	public default IntegerWriteChannel getSetRemoteModeChannel() {
-		return this.channel(ChannelId.SET_REMOTE_MODE);
+	public default EnumWriteChannel getSetRemoteModeChannel() {
+		return this.channel(ChannelId.REMOTE_MODE);
 	}
 
-	public default void setSetRemoteMode(int value) throws OpenemsNamedException {
+	public default Channel<RemoteMode> getRemoteModeChannel() {
+		return this.channel(ChannelId.REMOTE_MODE);
+	}	
+	
+	public default void setRemoteMode(RemoteMode value) throws OpenemsNamedException {
 		this.getSetRemoteModeChannel().setNextWriteValue(value);
 	}
+
+	public default RemoteMode getRemoteMode()  {
+		return this.getRemoteModeChannel().value().asEnum();
+	}
+		
+	
+	
 
 	public default IntegerWriteChannel getSetRemoteWatchdogTimeChannel() {
 		return this.channel(ChannelId.SET_REMOTE_WATCHDOG_TIME);
@@ -648,14 +659,23 @@ public interface DeyeSunHybrid
 	public default void setBatteryConstantCurrent(int value) throws OpenemsNamedException {
 		this.getSetBatteryConstantCurrentChannel().setNextWriteValue(value);
 	}
-
-	public default IntegerWriteChannel getSetBatteryPowerPercentChannel() {
-		return this.channel(ChannelId.SET_BATTERY_POWER_PERCENT);
+	
+	// deci percent
+	public default IntegerWriteChannel getSetBatteryPowerDeciPercentChannel() {
+		return this.channel(ChannelId.SET_BATTERY_POWER_DECI_PERCENT);
+	}
+	
+	public default IntegerReadChannel getBatteryPowerDeciPercentChannel() {
+		return this.channel(ChannelId.SET_BATTERY_POWER_DECI_PERCENT);
 	}
 
-	public default void setSetBatteryPowerPercent(int value) throws OpenemsNamedException {
-		this.getSetBatteryPowerPercentChannel().setNextWriteValue(value);
+	public default void setSetBatteryPowerDeciPercent(int value) throws OpenemsNamedException {
+		this.getSetBatteryPowerDeciPercentChannel().setNextWriteValue(value);
 	}
+	
+	public default Value<Integer> getBatteryPowerDeciPercent() {
+		return this.getBatteryPowerDeciPercentChannel().value();
+	}	
 
 	public default IntegerWriteChannel getSetBatteryPowerSocChannel() {
 		return this.channel(ChannelId.SET_BATTERY_POWER_SOC);
@@ -981,6 +1001,11 @@ public interface DeyeSunHybrid
 		return this.getMaxAcExportChannel().value();
 	}
 
+	/**
+	 * Internal method to set {@link MAX_AC_EXPORT} of this component.
+	 *
+	 * @param value the new {@link MAX_AC_EXPORT} to set
+	 */
 	public default void _setMaxAcExport(Integer value) {
 		this.getMaxAcExportChannel().setNextValue(value);
 	}
@@ -993,6 +1018,11 @@ public interface DeyeSunHybrid
 		return this.getMaxAcImportChannel().value();
 	}
 
+	/**
+	 * Internal method to set {@link MAX_AC_IMPORT} of this component.
+	 *
+	 * @param value the new {@link MAX_AC_IMPORT} to set
+	 */
 	public default void _setMaxAcImport(Integer value) {
 		this.getMaxAcImportChannel().setNextValue(value);
 	}
@@ -1001,17 +1031,43 @@ public interface DeyeSunHybrid
 		return this.channel(ChannelId.POWER_TO_GRID_TARGET);
 	}
 
-	public default void _setPowerToGridTarget(int value) throws OpenemsNamedException {
-		this.getSetPowerToGridTargetChannel().setNextWriteValue(value);
-	}
-
 	public default IntegerReadChannel getPowerToGridTargetChannel() {
 		return this.channel(ChannelId.POWER_TO_GRID_TARGET);
+	}
+
+	/**
+	 * Internal method to set {@link POWER_TO_GRID_TARGET} of this component.
+	 * Register 143.
+	 *
+	 * @param value the new {@link POWER_TO_GRID_TARGET} to set
+	 */
+	public default void setPowerToGridTarget(int value) throws OpenemsNamedException {
+		this.getSetPowerToGridTargetChannel().setNextWriteValue(value);
 	}
 
 	public default Value<Integer> getPowerToGridTarget() {
 		return this.getPowerToGridTargetChannel().value();
 	}
+
+	// Placeholder
+	public default IntegerWriteChannel getPlaceholder1Channel() {
+		return this.channel(ChannelId.PLACEHOLDER_1);
+	}
+
+	public default void setPlaceholder1(int value) throws OpenemsNamedException {
+		this.getPlaceholder1Channel().setNextWriteValue(value);
+	}
+	
+	// Placeholder
+	public default IntegerWriteChannel getPlaceholder2Channel() {
+		return this.channel(ChannelId.PLACEHOLDER_2);
+	}
+
+	public default void setPlaceholder2(int value) throws OpenemsNamedException {
+		this.getPlaceholder2Channel().setNextWriteValue(value);
+	}	
+
+
 
 	// -----------------------------------------------------------------------------
 	// Error handling helpers (unchanged)
@@ -1037,21 +1093,38 @@ public interface DeyeSunHybrid
 		}
 	}
 
+	/**
+	 * Updates the error-state Channels (Fxx) of this component based on the currently active error codes.
+	 *
+	 * <p>The active error codes are obtained via {@code readErrorCodes(self)} (e.g. derived from Modbus register 143).</p>
+	 *
+	 * @param self the {@link OpenemsComponent} to update
+	 */
 	public static void updateErrorState(OpenemsComponent self) {
-		Set<Integer> activeErrors = readErrorCodes(self);
+	    Set<Integer> activeErrors = readErrorCodes(self);
 
-		for (ChannelId channelId : ChannelId.values()) {
-			if (!channelId.name().matches("F\\d+")) {
-				continue; // Only Error Channels
-			}
-			int code = Integer.parseInt(channelId.name().substring(1)); // "F22" → 22
-			boolean isActive = activeErrors.contains(code);
-			self.channel(channelId).setNextValue(isActive); // true = Fehler aktiv
-		}
+	    for (ChannelId channelId : ChannelId.values()) {
+	        if (!channelId.name().matches("F\\d+")) {
+	            continue; // Only Error Channels
+	        }
+	        int code = Integer.parseInt(channelId.name().substring(1)); // "F22" → 22
+	        boolean isActive = activeErrors.contains(code);
+	        self.channel(channelId).setNextValue(isActive); // true = error active
+	    }
 	}
 
+	/**
+	 * Checks whether the BMS communication error is currently active.
+	 *
+	 * <p>The active error codes are obtained via {@code readErrorCodes(self)} (e.g. derived from Modbus register 143).
+	 * This method returns {@code true} if error code {@code 58} is present.</p>
+	 *
+	 * @param self the {@link OpenemsComponent} to query
+	 * @return {@code true} if the BMS communication error is active; otherwise {@code false}
+	 */
 	public static boolean isBmsCommError(OpenemsComponent self) {
-		Set<Integer> activeErrors = readErrorCodes(self);
-		return activeErrors.contains(58);
+	    Set<Integer> activeErrors = readErrorCodes(self);
+	    return activeErrors.contains(58);
 	}
+
 }
