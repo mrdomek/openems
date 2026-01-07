@@ -583,6 +583,28 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 					return;
 				}
 			}
+			
+			if (this.battery == null) {
+			    this.logWarn(log, "Blocker: Battery reference is NULL");
+			    this.changeState(WorkState.WARNING);
+			    return;
+			}
+			if (this.battery.getRunState() != BatteryRunState.NORMAL) {
+			    this.logWarn(log, "Blocker: Battery RunState is " + this.battery.getRunState());
+			    this.changeState(WorkState.WARNING);
+			    return;
+			}
+			if (this.dcCharger == null) {
+			    this.logWarn(log, "Blocker: DcCharger reference is NULL");
+			    this.changeState(WorkState.WARNING);
+			    return;
+			}
+			if (!this.checkEssInitialValues()) {
+			    this.logWarn(log, "Blocker: CheckEssInitialValues failed");
+			    this.setEssInitialValues(); // Versucht es zu reparieren
+			    this.changeState(WorkState.INITIALIZING);
+			    return;
+			}
 
 			this._setWorkState(WorkState.NORMAL);
 
@@ -773,31 +795,34 @@ public class DeyeSunHybridImpl extends AbstractOpenemsModbusComponent
 
 	public void setEssInitialValues() {
 
-		try {
-			this.setRemoteMode(RemoteMode.OFF); // for setting values remote mode needs to be off
-			/*
-			 * this.setTimeOfUseSellingEnabled(false); this.setTimeOfUseMonday(false);
-			 * this.setTimeOfUseTuesday(false); this.setTimeOfUseWednesday(false);
-			 * this.setTimeOfUseThursday(false); this.setTimeOfUseFriday(false);
-			 * this.setTimeOfUseSaturday(false); this.setTimeOfUseSunday(false);
-			 * 
-			 * this.setSellModeTimePoint1(0); this.setSellModeTimePoint2(2355);
-			 * 
-			 * // Allow Charge from grid / generator this.setChargeModeTimePoint1(3);
-			 * this.setChargeModeTimePoint2(3);
-			 */
-			// this.setLimitControlFunction(LimitControlFunction.SELLING_ACTIVE);
+	    try {
+	        this.setRemoteMode(RemoteMode.OFF); // Muss OFF sein, um Settings zu schreiben
 
-			// max power to grid including pv production
-			// has to be set while NOT in remote mode
-			this.setPowerToGridTarget(this.config.maxSellToGridPower());
+	        // --- HIER KOMMENTAR ENTFERNEN ---
+	        this.setTimeOfUseSellingEnabled(false); 
+	        this.setTimeOfUseMonday(false);
+	        this.setTimeOfUseTuesday(false);
+	        this.setTimeOfUseWednesday(false);
+	        this.setTimeOfUseThursday(false);
+	        this.setTimeOfUseFriday(false);
+	        this.setTimeOfUseSaturday(false);
+	        this.setTimeOfUseSunday(false);
+	        
+	        this.setSellModeTimePoint1(0);
+	        this.setSellModeTimePoint2(2355);
+	        
+	        // Allow Charge from grid / generator
+	        this.setChargeModeTimePoint1(3);
+	        this.setChargeModeTimePoint2(3);
+	        // ---------------------------------
 
-		} catch (OpenemsNamedException e) {
-			this.logError(this.log, "Unable to set initial values for ESS: " + e.getMessage());
-		}
+	        // max power to grid including pv production
+	        this.setPowerToGridTarget(this.config.maxSellToGridPower());
 
+	    } catch (OpenemsNamedException e) {
+	        this.logError(this.log, "Unable to set initial values for ESS: " + e.getMessage());
+	    }
 	}
-
 	public boolean getChargeMode() {
 		return this.chargeMode;
 	}

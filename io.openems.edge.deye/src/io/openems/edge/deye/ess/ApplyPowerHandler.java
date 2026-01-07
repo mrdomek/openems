@@ -44,7 +44,7 @@ public class ApplyPowerHandler {
 			return;
 		}
 		if (ess.getWorkState() != WorkState.NORMAL) {
-			log.error("ESS not in normal state. Skipping ApplyPower");
+			log.error("ESS not in normal state: " + ess.getWorkState() + ". Skipping ApplyPower");
 			return;
 		}
 
