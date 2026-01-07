@@ -26,6 +26,7 @@ import io.openems.common.exceptions.OpenemsException;
 import io.openems.edge.battery.api.Battery;
 import io.openems.edge.bridge.modbus.api.AbstractOpenemsModbusComponent;
 import io.openems.edge.bridge.modbus.api.BridgeModbus;
+import io.openems.edge.bridge.modbus.api.ChannelMetaInfoReadAndWrite;
 import io.openems.edge.bridge.modbus.api.ModbusComponent;
 import io.openems.edge.bridge.modbus.api.ModbusProtocol;
 import io.openems.edge.bridge.modbus.api.element.DummyRegisterElement;
@@ -33,8 +34,9 @@ import io.openems.edge.bridge.modbus.api.element.SignedDoublewordElement;
 import io.openems.edge.bridge.modbus.api.element.SignedWordElement;
 import io.openems.edge.bridge.modbus.api.element.UnsignedDoublewordElement;
 import io.openems.edge.bridge.modbus.api.element.UnsignedWordElement;
-import io.openems.edge.bridge.modbus.api.element.WordOrder;
+import io.openems.edge.bridge.modbus.api.task.FC16WriteRegistersTask;
 import io.openems.edge.bridge.modbus.api.task.FC3ReadRegistersTask;
+import io.openems.edge.common.channel.IntegerWriteChannel;
 import io.openems.edge.common.component.OpenemsComponent;
 import io.openems.edge.common.event.EdgeEventConstants;
 import io.openems.edge.common.startstop.StartStop;
@@ -47,6 +49,7 @@ import io.openems.edge.common.taskmanager.Priority;
 		immediate = true, //
 		configurationPolicy = ConfigurationPolicy.REQUIRE, //
 		property = { //
+				"Event.topics=" + EdgeEventConstants.TOPIC_CYCLE_BEFORE_WRITE, //
 				"Event.topics=" + EdgeEventConstants.TOPIC_CYCLE_AFTER_PROCESS_IMAGE //
 		} //
 )
@@ -65,15 +68,25 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 
 	private Config config;
 
+	//mrdomek Cache raw settings values (per-cell mV) to derive pack voltage limits using CellCount.
+	private Integer settingsCellCount = null;
+	private Integer settingsCellRcvMv = null;
+	private Integer settingsSoc0Mv = null;
+
+	//mrdomek If true, enable-flag writes are scheduled once in the next BEFORE_WRITE cycle.
+	private volatile boolean pendingWriteEnableFlags = false;
+
 	public JKBMSBatteryImpl() {
 		super(//
 				OpenemsComponent.ChannelId.values(), //
 				ModbusComponent.ChannelId.values(), //
 				Battery.ChannelId.values(), //
-				// FIX: Doppelte Channel-IDs filtern und Typ voll qualifizieren
-				Arrays.stream(JKBMSBattery.ChannelId.values()).filter(id -> {
-					return Arrays.stream(Battery.ChannelId.values()).noneMatch(batId -> batId.name().equals(id.name()));
-				}).toArray(io.openems.edge.common.channel.ChannelId[]::new) // [FIX] Ambiguous Type gelöst
+				Arrays.stream(JKBMSBattery.ChannelId.values()) //
+						//mrdomek Keep JK-specific channels (cell voltages, wire resistance, settings, etc.).
+						//mrdomek Only avoid Channel-ID collisions with Battery.* (e.g., Soc/Voltage/Current if present).
+						.filter(jkId -> Arrays.stream(Battery.ChannelId.values()) //
+								.noneMatch(batId -> batId.name().equals(jkId.name()))) //
+						.toArray(io.openems.edge.common.channel.ChannelId[]::new) //
 		);
 	}
 
@@ -84,6 +97,7 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 				"Modbus", config.modbus_id())) {
 			return;
 		}
+		this.pendingWriteEnableFlags = true; //mrdomek Apply config enable-switches via Modbus once after (re-)activation.
 	}
 
 	@Override
@@ -93,16 +107,16 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 	}
 
 	@Override
-	public void setStartStop(StartStop value) {
-		this._setStartStop(value);
-	}
-
-	@Override
 	public void handleEvent(Event event) {
-		if (!this.isEnabled()) {
-			return;
-		}
 		switch (event.getTopic()) {
+		case EdgeEventConstants.TOPIC_CYCLE_BEFORE_WRITE:
+			if (this.pendingWriteEnableFlags) {
+				if (this.writeEnableFlagsFromConfig()) {
+					this.pendingWriteEnableFlags = false;
+				}
+			}
+			break;
+
 		case EdgeEventConstants.TOPIC_CYCLE_AFTER_PROCESS_IMAGE:
 			this.logDebug(this.log, "Cycle finished");
 			break;
@@ -130,18 +144,26 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 					} else {
 						return clazz.getSimpleName();
 					}
-				}))
-				// Den Map-Inhalt in einen schönen String verwandeln
-				.entrySet().stream()
-				// Sortieren der Gruppen (JKBMSBattery zuerst, dann alphabetisch der Rest)
+				})).entrySet().stream()
+				// Ausgabe sortieren: Battery zuerst, dann JKBMSBattery, dann Rest alphabetisch
 				.sorted((e1, e2) -> {
 					String k1 = e1.getKey();
 					String k2 = e2.getKey();
-					// Eigene Klasse immer nach oben
-					if (k1.equals("JKBMSBattery"))
+					if (k1.equals(k2)) {
+						return 0;
+					}
+					if (k1.equals("Battery")) {
 						return -1;
-					if (k2.equals("JKBMSBattery"))
+					}
+					if (k2.equals("Battery")) {
 						return 1;
+					}
+					if (k1.equals("JKBMSBattery")) {
+						return -1;
+					}
+					if (k2.equals("JKBMSBattery")) {
+						return 1;
+					}
 					return k1.compareTo(k2);
 				}).map(entry -> {
 					String groupName = entry.getKey();
@@ -159,21 +181,38 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 	@Override
 	protected void logDebug(Logger log, String message) {
 		if (this.config.debugMode()) {
+
 			if (this.config.extendedDebugMode()) {
-				this.logInfo(log, "\n #################### EXTENDED DEBUG START ####################");
-				this.logInfo(log, this.collectDebugData());
-				this.logInfo(log, "\n #################### EXTENDED DEBUG END ####################");
+				this.logInfo(this.log,
+						"\n ############################################## JK BMS Values Start #############################################");
+				this.logInfo(this.log, this.collectDebugData());
+				this.logInfo(this.log,
+						"\n ############################################## JK BMS Values End #############################################");
 			}
 			this.logInfo(log, message);
+
 		}
+	}
+
+	@Override
+	public String debugLog() {
+		return "SoC:" + this.getSoc().get() //
+				+ "; Voltage:" + this.getVoltage().get() //
+				+ "; Current:" + this.getCurrent().get();
+	}
+
+	@Override
+	public void setStartStop(StartStop startStop) throws OpenemsException {
+		this._setStartStop(startStop);
 	}
 
 	@Override
 	protected ModbusProtocol defineModbusProtocol() {
 		return new ModbusProtocol(this, //
 
-				// --- BLOCK 1: Zellspannungen & Widerstände (0x1200 - 0x1244) ---
-				new FC3ReadRegistersTask(0x1200, Priority.LOW, //
+				// --------------- BLOCK 1: Basic + Cell Voltages (Word-based addressing) ---------------
+				new FC3ReadRegistersTask(0x1200, Priority.HIGH, //
+
 						m(JKBMSBattery.ChannelId.CELL_VOLTAGE_00_MV, new UnsignedWordElement(0x1200), DIRECT_1_TO_1),
 						m(JKBMSBattery.ChannelId.CELL_VOLTAGE_01_MV, new UnsignedWordElement(0x1201), DIRECT_1_TO_1),
 						m(JKBMSBattery.ChannelId.CELL_VOLTAGE_02_MV, new UnsignedWordElement(0x1202), DIRECT_1_TO_1),
@@ -243,44 +282,45 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 						m(JKBMSBattery.ChannelId.CELL_WIRE_RES_30_MOHM, new UnsignedWordElement(0x1243), DIRECT_1_TO_1),
 						m(JKBMSBattery.ChannelId.CELL_WIRE_RES_31_MOHM, new UnsignedWordElement(0x1244), DIRECT_1_TO_1)),
 
-				// --- BLOCK 2: Restliche Daten (0x128A - 0x1298) ---
+				// --- BLOCK 2: Restliche Daten (Start: 0x128A) ---
 				new FC3ReadRegistersTask(0x128A, Priority.HIGH, //
 
-						// Offset 0
+						// 0x128A: MOS Temp (INT16, °C * -0.1)
 						m(JKBMSBattery.ChannelId.TEMP_MOS_C, new SignedWordElement(0x128A), SCALE_FACTOR_MINUS_1),
 
-						// Offset 1
+						// Dummy 0x128B - 0x128C
 						new DummyRegisterElement(0x128B, 0x128C),
 
-						// Offset 3: Battery Voltage (U32)
-						// FIX: BMS liefert mV, OpenEMS erwartet V -> / 1000
+						// 0x128D: Battery Voltage (U32, mV)
 						m(JKBMSBattery.ChannelId.BAT_VOLTAGE_MV, new UnsignedDoublewordElement(0x128D), DIRECT_1_TO_1)
 								.onUpdateCallback(val -> {
-									if (val == null) return;
-									this._setVoltage(val.intValue() / 1000); // mV -> V
+									if (val == null)
+										return;
+									this._setVoltage(val.intValue() / 1000);
 								}),
 
-						// Offset 5
+						// Dummy 0x128F - 0x1290
 						new DummyRegisterElement(0x128F, 0x1290),
 
-						// Offset 7: Battery Current (I32)
-						// FIX: BMS liefert mA, OpenEMS erwartet A -> / 1000
-						m(JKBMSBattery.ChannelId.BAT_CURRENT_MA, new SignedDoublewordElement(0x1291), DIRECT_1_TO_1)
-								.onUpdateCallback(val -> {
-									if (val == null) return;
-									this._setCurrent(val.intValue() / 1000); // mA -> A
-								}),
+						// 0x1291: Battery Current (S32, mA)
+						m(JKBMSBattery.ChannelId.BAT_CURRENT_MA,
+								new SignedDoublewordElement(0x1291), DIRECT_1_TO_1)
+										.onUpdateCallback(val -> {
+											if (val == null)
+												return;
+											this._setCurrent(val.intValue() / 1000);
+										}),
 
-						// Offset 9
+						// 0x1293: Battery Temp 1 (INT16, °C * -0.1)
 						m(JKBMSBattery.ChannelId.TEMP_BAT_1_C, new SignedWordElement(0x1293), SCALE_FACTOR_MINUS_1),
 
-						// Offset 10
+						// 0x1294: Battery Temp 2 (INT16, °C * -0.1)
 						m(JKBMSBattery.ChannelId.TEMP_BAT_2_C, new SignedWordElement(0x1294), SCALE_FACTOR_MINUS_1),
 
-						// Offset 11
+						// Dummy 0x1295 - 0x1296
 						new DummyRegisterElement(0x1295, 0x1296),
 
-						// Offset 13
+						// 0x1297: Balance Current (INT16, mA)
 						m(JKBMSBattery.ChannelId.BALANCE_CURRENT_MA, new SignedWordElement(0x1297), DIRECT_1_TO_1),
 
 						// Offset 14: SOC (Byte 0) & Balance (Byte 1) bei 0x1298
@@ -289,78 +329,70 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 							int soc = raw & 0xFF;
 							int balance = (raw >> 8) & 0xFF;
 
-							this._setSoc(soc);
-							try {
-								this.channel(JKBMSBattery.ChannelId.SOC).setNextValue(soc);
-							} catch (Exception e) {}
+							this._setSoc(soc); //mrdomek Canonical SOC is Battery.SOC; no private mirror channel.
 							this.channel(JKBMSBattery.ChannelId.BALANCE_STATE).setNextValue(balance);
 						}),
 
-						// Offset 15
-						m(JKBMSBattery.ChannelId.SOC_CAP_REMAIN_MAH, new SignedDoublewordElement(0x1299), DIRECT_1_TO_1),
+						// 0x1299: Remaining Capacity (S32, mAh)
+						m(JKBMSBattery.ChannelId.SOC_CAP_REMAIN_MAH,
+								new SignedDoublewordElement(0x1299), DIRECT_1_TO_1),
 
-						// Offset 17
-						m(JKBMSBattery.ChannelId.SOC_FULL_CHARGE_CAP_MAH, new UnsignedDoublewordElement(0x129B), DIRECT_1_TO_1),
+						// 0x129B: Full Charge Capacity (U32, mAh)
+						m(JKBMSBattery.ChannelId.SOC_FULL_CHARGE_CAP_MAH, new UnsignedDoublewordElement(0x129B),
+								DIRECT_1_TO_1),
 
-						// Offset 19
+						// 0x129D: Cycle Count (U32)
 						m(JKBMSBattery.ChannelId.SOC_CYCLE_COUNT, new UnsignedDoublewordElement(0x129D), DIRECT_1_TO_1),
 
-						// Offset 21
+						// 0x129F: Cycle Capacity (U32, mAh)
 						m(JKBMSBattery.ChannelId.SOC_CYCLE_CAP_MAH, new UnsignedDoublewordElement(0x129F), DIRECT_1_TO_1),
 
 						// Offset 23: SOH (Byte 1)
 						m(new UnsignedWordElement(0x12A1)).build().onUpdateCallback(raw -> {
 							if (raw == null) return;
 							int soh = (raw >> 8) & 0xFF;
-							this._setSoh(soh);
-							try {
-								this.channel(JKBMSBattery.ChannelId.SOH).setNextValue(soh);
-							} catch (Exception e) {}
+
+							this._setSoh(soh); //mrdomek Canonical SOH is Battery.SOH; no private mirror channel.
 						}),
 
-						// Offset 24
+						// 0x12A2: User Alarm
 						m(JKBMSBattery.ChannelId.USER_ALARM, new UnsignedWordElement(0x12A2), DIRECT_1_TO_1),
 
-						// Offset 25
-						new DummyRegisterElement(0x12A3, 0x12A4),
+						// Dummy 0x12A3 - 0x12A5
+						new DummyRegisterElement(0x12A3, 0x12A5),
 
-						// Offset 27
-						new DummyRegisterElement(0x12A5, 0x12A5),
-
-						// Offset 28
+						// 0x12A6: User Alarm 2
 						m(JKBMSBattery.ChannelId.USER_ALARM_2, new UnsignedWordElement(0x12A6), DIRECT_1_TO_1),
 
-						// Offset 29
+						// Dummy 0x12A7 - 0x12AC
 						new DummyRegisterElement(0x12A7, 0x12AC),
 
-						// Offset 35
+						// 0x12AD: Temp Sensor Absent
 						m(JKBMSBattery.ChannelId.TEMP_SENSOR_ABSENT, new UnsignedWordElement(0x12AD), DIRECT_1_TO_1),
 
-						// Offset 36
+						// Dummy 0x12AE - 0x12B5
 						new DummyRegisterElement(0x12AE, 0x12B5),
 
-						// Offset 44
+						// 0x12B6: Heat Current (INT16, mA)
 						m(JKBMSBattery.ChannelId.HEAT_CURRENT_MA, new SignedWordElement(0x12B6), DIRECT_1_TO_1),
 
-						// Offset 45
-						new DummyRegisterElement(0x12B7),
+						// Dummy 0x12B7
+						new DummyRegisterElement(0x12B7, 0x12B7),
 
-						// Offset 48
+						// 0x12B8: System Run Time (U32, 0.1s)
 						m(JKBMSBattery.ChannelId.SYS_RUN_TICKS_DS, new UnsignedDoublewordElement(0x12B8), DIRECT_1_TO_1),
 
-						// Gap
+						// Dummy 0x12BA - 0x12C0
 						new DummyRegisterElement(0x12BA, 0x12C0),
 
-						// Offset 55
+						// 0x12C1: PCL Module Status
 						m(JKBMSBattery.ChannelId.PCL_MODULE_STATUS, new UnsignedWordElement(0x12C1), DIRECT_1_TO_1),
-				
-						// Offset 52
+
+						// 0x12C2: Battery Temp 3 (INT16, °C * -0.1)
 						m(JKBMSBattery.ChannelId.TEMP_BAT_3_C, new SignedWordElement(0x12C2), SCALE_FACTOR_MINUS_1),
 
-						// Offset 53
+						// 0x12C3: Battery Temp 4 (INT16, °C * -0.1)
 						m(JKBMSBattery.ChannelId.TEMP_BAT_4_C, new SignedWordElement(0x12C3), SCALE_FACTOR_MINUS_1)),
-				
-						
 
 				// --- BLOCK 3: SETTINGS (0x1000 - 0x103E) ---
 				new FC3ReadRegistersTask(0x1000, Priority.HIGH, //
@@ -390,20 +422,22 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 						new DummyRegisterElement(0x1008, 0x100D),
 
 							
-						// 0x100E: Voltage SOC 0% (UINT32, mV) -> DISCHARGE_MIN_VOLTAGE (V)
-						// FIX: mV -> V
+						// 0x100E: Voltage SOC 0% (UINT32, mV) -> DISCHARGE_MIN_VOLTAGE (PACK V)
 						m(JKBMSBattery.ChannelId.SETTINGS_VOLTAGE_SOC_0, new UnsignedDoublewordElement(0x100E), DIRECT_1_TO_1)
 							.onUpdateCallback(val -> {
 								if (val == null) return;
-									this._setDischargeMinVoltage(val.intValue() / 1000); 
+								//mrdomek Cache per-cell mV, derive pack-level limit using CellCount.
+								this.settingsSoc0Mv = val.intValue();
+								this.updateDerivedVoltageLimits();
 							}),
 							
-						// 0x1010: CELL RCV (UINT32, mV) -> CHARGE_MAX_VOLTAGE (V)
-						// FIX: mV -> V
+						// 0x1010: CELL RCV (UINT32, mV) -> CHARGE_MAX_VOLTAGE (PACK V)
 						m(JKBMSBattery.ChannelId.SETTINGS_CELL_RCV, new UnsignedDoublewordElement(0x1010), DIRECT_1_TO_1)
 							.onUpdateCallback(val -> {
 								if (val == null) return;
-								this._setChargeMaxVoltage(val.intValue() / 1000); 
+								//mrdomek Cache per-cell mV, derive pack-level limit using CellCount.
+								this.settingsCellRcvMv = val.intValue();
+								this.updateDerivedVoltageLimits();
 							}),
 					
 					
@@ -433,17 +467,21 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 						new DummyRegisterElement(0x101E, 0x1035),
 						
 						// 0x1036: CellCount
-						m(JKBMSBattery.ChannelId.SETTINGS_CELL_COUNT, new UnsignedDoublewordElement(0x1036), DIRECT_1_TO_1),
+						m(JKBMSBattery.ChannelId.SETTINGS_CELL_COUNT, new UnsignedDoublewordElement(0x1036), DIRECT_1_TO_1)
+							.onUpdateCallback(val -> {
+								if (val == null) return;
+								//mrdomek CellCount is required to compute pack voltage limits.
+								this.settingsCellCount = val.intValue();
+								this.updateDerivedVoltageLimits();
+							}),
 
-						// 0x1038: ChargeENABLE
-						m(JKBMSBattery.ChannelId.SETTINGS_CHARGE_ENABLE, new UnsignedDoublewordElement(0x1038), DIRECT_1_TO_1),
-						
-						// 0x103A: DischargeENABLE
-						m(JKBMSBattery.ChannelId.SETTINGS_DISCHARGE_ENABLE, new UnsignedDoublewordElement(0x103A), DIRECT_1_TO_1),
-
-						// 0x103C: BalanceENABLE
-						m(JKBMSBattery.ChannelId.SETTINGS_BALANCE_ENABLE, new UnsignedDoublewordElement(0x103C), DIRECT_1_TO_1),
-				
+						m(JKBMSBattery.ChannelId.SETTINGS_CHARGE_ENABLE, new UnsignedDoublewordElement(0x1038), DIRECT_1_TO_1,
+									new ChannelMetaInfoReadAndWrite(0x1038, 0x1070)),
+						m(JKBMSBattery.ChannelId.SETTINGS_DISCHARGE_ENABLE, new UnsignedDoublewordElement(0x103A), DIRECT_1_TO_1,
+									new ChannelMetaInfoReadAndWrite(0x103A, 0x1074)),
+						m(JKBMSBattery.ChannelId.SETTINGS_BALANCE_ENABLE, new UnsignedDoublewordElement(0x103C), DIRECT_1_TO_1,
+									new ChannelMetaInfoReadAndWrite(0x103C, 0x1078)),
+			
 						// 0x103E: Battery Capacity (UINT32, mAH) -> CAPACITY (Wh)
 						m(JKBMSBattery.ChannelId.SETTINGS_CAPACITY_AH, new UnsignedDoublewordElement(0x103E), DIRECT_1_TO_1)
 							.onUpdateCallback(valMah -> {
@@ -458,9 +496,57 @@ public class JKBMSBatteryImpl extends AbstractOpenemsModbusComponent
 									this._setCapacity((int) capacityWh);
 									}
 								})
-						)
-				);
-	}
-	
+						),
 
+				// --- WRITE: enable flags (requested: one FC16 per switch; UINT32) ---
+				new FC16WriteRegistersTask(0x1070, //
+						m(JKBMSBattery.ChannelId.SETTINGS_CHARGE_ENABLE, new UnsignedDoublewordElement(0x1070), DIRECT_1_TO_1,
+								new ChannelMetaInfoReadAndWrite(0x1038, 0x1070))),
+				new FC16WriteRegistersTask(0x1074, //
+						m(JKBMSBattery.ChannelId.SETTINGS_DISCHARGE_ENABLE, new UnsignedDoublewordElement(0x1074), DIRECT_1_TO_1,
+								new ChannelMetaInfoReadAndWrite(0x103A, 0x1074))),
+				new FC16WriteRegistersTask(0x1078, //
+						m(JKBMSBattery.ChannelId.SETTINGS_BALANCE_ENABLE, new UnsignedDoublewordElement(0x1078), DIRECT_1_TO_1,
+								new ChannelMetaInfoReadAndWrite(0x103C, 0x1078)))
+
+
+				);
+		
+	}
+	private void updateDerivedVoltageLimits() {
+		//mrdomek JK provides per-cell voltage limits; OpenEMS Battery expects pack limits. We derive pack limits using CellCount.
+		if (this.settingsCellCount == null || this.settingsCellCount.intValue() <= 0) {
+			return;
+		}
+		final long cellCount = this.settingsCellCount.longValue();
+
+		if (this.settingsCellRcvMv != null) {
+			final long packMv = this.settingsCellRcvMv.longValue() * cellCount;
+			this._setChargeMaxVoltage((int) (packMv / 1000L)); // mV -> V
+		}
+
+		if (this.settingsSoc0Mv != null) {
+			final long packMv = this.settingsSoc0Mv.longValue() * cellCount;
+			this._setDischargeMinVoltage((int) (packMv / 1000L)); // mV -> V
+		}
+	}
+
+	private boolean writeEnableFlagsFromConfig() {
+		//mrdomek We only schedule writes when requested; FC16WriteRegistersTask writes only channels with NextWriteValue set.
+		if (this.config == null) {
+			return false;
+		}
+		try {
+			((IntegerWriteChannel) this.channel(JKBMSBattery.ChannelId.SETTINGS_CHARGE_ENABLE))
+					.setNextWriteValue(this.config.chargeEnable() ? 1 : 0);
+			((IntegerWriteChannel) this.channel(JKBMSBattery.ChannelId.SETTINGS_DISCHARGE_ENABLE))
+					.setNextWriteValue(this.config.dischargeEnable() ? 1 : 0);
+			((IntegerWriteChannel) this.channel(JKBMSBattery.ChannelId.SETTINGS_BALANCE_ENABLE))
+					.setNextWriteValue(this.config.balanceEnable() ? 1 : 0);
+			return true;
+		} catch (Exception e) {
+			this.logError(this.log, "Failed to schedule enable-flag writes: " + e.getMessage());
+			return false;
+		}
+	}
 }

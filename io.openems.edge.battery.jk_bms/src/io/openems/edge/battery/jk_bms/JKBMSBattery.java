@@ -1,12 +1,12 @@
 package io.openems.edge.battery.jk_bms;
 
 import static io.openems.common.channel.AccessMode.READ_ONLY;
+import static io.openems.common.channel.AccessMode.READ_WRITE;
 import static io.openems.common.channel.Unit.DEGREE_CELSIUS;
 import static io.openems.common.channel.Unit.MILLIAMPERE;
 import static io.openems.common.channel.Unit.MILLIAMPERE_HOURS;
 import static io.openems.common.channel.Unit.MILLIVOLT;
 import static io.openems.common.channel.Unit.NONE;
-import static io.openems.common.channel.Unit.PERCENT;
 import static io.openems.common.types.OpenemsType.INTEGER;
 import static io.openems.common.types.OpenemsType.LONG;
 
@@ -17,17 +17,19 @@ public interface JKBMSBattery extends OpenemsComponent {
 
 	public enum ChannelId implements io.openems.edge.common.channel.ChannelId {
 
-		// --- Cell voltages (mV) ---
-		CELL_VOLTAGE_00_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 00")),
-		CELL_VOLTAGE_01_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 01")),
-		CELL_VOLTAGE_02_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 02")),
-		CELL_VOLTAGE_03_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 03")),
-		CELL_VOLTAGE_04_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 04")),
-		CELL_VOLTAGE_05_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 05")),
-		CELL_VOLTAGE_06_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 06")),
-		CELL_VOLTAGE_07_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 07")),
-		CELL_VOLTAGE_08_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 08")),
-		CELL_VOLTAGE_09_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 09")),
+		/*
+		 * Zellspannungen (mV)
+		 */
+		CELL_VOLTAGE_00_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 0")),
+		CELL_VOLTAGE_01_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 1")),
+		CELL_VOLTAGE_02_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 2")),
+		CELL_VOLTAGE_03_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 3")),
+		CELL_VOLTAGE_04_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 4")),
+		CELL_VOLTAGE_05_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 5")),
+		CELL_VOLTAGE_06_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 6")),
+		CELL_VOLTAGE_07_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 7")),
+		CELL_VOLTAGE_08_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 8")),
+		CELL_VOLTAGE_09_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 9")),
 		CELL_VOLTAGE_10_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 10")),
 		CELL_VOLTAGE_11_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 11")),
 		CELL_VOLTAGE_12_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 12")),
@@ -51,90 +53,93 @@ public interface JKBMSBattery extends OpenemsComponent {
 		CELL_VOLTAGE_30_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 30")),
 		CELL_VOLTAGE_31_MV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Cell Voltage 31")),
 
-		// --- Cell wire resistance (mΩ) ---
-		// Note: Unit.MILLIOHM might not exist in older OpenEMS versions. Using NONE with text suffix if needed.
-		CELL_WIRE_RES_00_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 00 (mOhm)")),
-		CELL_WIRE_RES_01_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 01 (mOhm)")),
-		CELL_WIRE_RES_02_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 02 (mOhm)")),
-		CELL_WIRE_RES_03_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 03 (mOhm)")),
-		CELL_WIRE_RES_04_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 04 (mOhm)")),
-		CELL_WIRE_RES_05_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 05 (mOhm)")),
-		CELL_WIRE_RES_06_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 06 (mOhm)")),
-		CELL_WIRE_RES_07_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 07 (mOhm)")),
-		CELL_WIRE_RES_08_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 08 (mOhm)")),
-		CELL_WIRE_RES_09_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 09 (mOhm)")),
-		CELL_WIRE_RES_10_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 10 (mOhm)")),
-		CELL_WIRE_RES_11_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 11 (mOhm)")),
-		CELL_WIRE_RES_12_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 12 (mOhm)")),
-		CELL_WIRE_RES_13_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 13 (mOhm)")),
-		CELL_WIRE_RES_14_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 14 (mOhm)")),
-		CELL_WIRE_RES_15_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 15 (mOhm)")),
-		CELL_WIRE_RES_16_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 16 (mOhm)")),
-		CELL_WIRE_RES_17_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 17 (mOhm)")),
-		CELL_WIRE_RES_18_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 18 (mOhm)")),
-		CELL_WIRE_RES_19_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 19 (mOhm)")),
-		CELL_WIRE_RES_20_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 20 (mOhm)")),
-		CELL_WIRE_RES_21_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 21 (mOhm)")),
-		CELL_WIRE_RES_22_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 22 (mOhm)")),
-		CELL_WIRE_RES_23_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 23 (mOhm)")),
-		CELL_WIRE_RES_24_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 24 (mOhm)")),
-		CELL_WIRE_RES_25_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 25 (mOhm)")),
-		CELL_WIRE_RES_26_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 26 (mOhm)")),
-		CELL_WIRE_RES_27_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 27 (mOhm)")),
-		CELL_WIRE_RES_28_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 28 (mOhm)")),
-		CELL_WIRE_RES_29_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 29 (mOhm)")),
-		CELL_WIRE_RES_30_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 30 (mOhm)")),
-		CELL_WIRE_RES_31_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 31 (mOhm)")),
+		/*
+		 * Zell-Innenwiderstand / Wire Resistance (mOhm) – Unit ist aktuell NONE wie in
+		 * deinem Stand
+		 */
+		CELL_WIRE_RES_00_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 0")),
+		CELL_WIRE_RES_01_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 1")),
+		CELL_WIRE_RES_02_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 2")),
+		CELL_WIRE_RES_03_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 3")),
+		CELL_WIRE_RES_04_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 4")),
+		CELL_WIRE_RES_05_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 5")),
+		CELL_WIRE_RES_06_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 6")),
+		CELL_WIRE_RES_07_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 7")),
+		CELL_WIRE_RES_08_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 8")),
+		CELL_WIRE_RES_09_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 9")),
+		CELL_WIRE_RES_10_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 10")),
+		CELL_WIRE_RES_11_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 11")),
+		CELL_WIRE_RES_12_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 12")),
+		CELL_WIRE_RES_13_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 13")),
+		CELL_WIRE_RES_14_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 14")),
+		CELL_WIRE_RES_15_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 15")),
+		CELL_WIRE_RES_16_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 16")),
+		CELL_WIRE_RES_17_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 17")),
+		CELL_WIRE_RES_18_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 18")),
+		CELL_WIRE_RES_19_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 19")),
+		CELL_WIRE_RES_20_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 20")),
+		CELL_WIRE_RES_21_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 21")),
+		CELL_WIRE_RES_22_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 22")),
+		CELL_WIRE_RES_23_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 23")),
+		CELL_WIRE_RES_24_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 24")),
+		CELL_WIRE_RES_25_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 25")),
+		CELL_WIRE_RES_26_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 26")),
+		CELL_WIRE_RES_27_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 27")),
+		CELL_WIRE_RES_28_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 28")),
+		CELL_WIRE_RES_29_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 29")),
+		CELL_WIRE_RES_30_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 30")),
+		CELL_WIRE_RES_31_MOHM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Cell Wire Resistance 31")),
 
-		// --- Temperatures ---
+		/*
+		 * Temperatur-Sensoren
+		 */
 		TEMP_MOS_C(Doc.of(INTEGER).unit(DEGREE_CELSIUS).accessMode(READ_ONLY).text("MOS Temperature")),
 		TEMP_BAT_1_C(Doc.of(INTEGER).unit(DEGREE_CELSIUS).accessMode(READ_ONLY).text("Battery Temperature 1")),
 		TEMP_BAT_2_C(Doc.of(INTEGER).unit(DEGREE_CELSIUS).accessMode(READ_ONLY).text("Battery Temperature 2")),
 		TEMP_BAT_3_C(Doc.of(INTEGER).unit(DEGREE_CELSIUS).accessMode(READ_ONLY).text("Battery Temperature 3")),
 		TEMP_BAT_4_C(Doc.of(INTEGER).unit(DEGREE_CELSIUS).accessMode(READ_ONLY).text("Battery Temperature 4")),
 
-		// --- Pack values ---
+		/*
+		 * Pack-/System-Werte
+		 */
 		BAT_VOLTAGE_MV(Doc.of(LONG).unit(MILLIVOLT).accessMode(READ_ONLY).text("Battery Voltage")),
 		BAT_CURRENT_MA(Doc.of(LONG).unit(MILLIAMPERE).accessMode(READ_ONLY).text("Battery Current")),
-
-		// --- Balancing ---
 		BALANCE_CURRENT_MA(Doc.of(INTEGER).unit(MILLIAMPERE).accessMode(READ_ONLY).text("Balance Current")),
 		BALANCE_STATE(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Balance State")),
+		HEAT_CURRENT_MA(Doc.of(INTEGER).unit(MILLIAMPERE).accessMode(READ_ONLY).text("Heat Current")),
+		SYS_RUN_TICKS_DS(Doc.of(LONG).unit(NONE).accessMode(READ_ONLY).text("0.1s ticks")),
 
-		// --- SOC/SOH ---
-		SOC(Doc.of(INTEGER).unit(PERCENT).accessMode(READ_ONLY).text("State of Charge")),
-		SOH(Doc.of(INTEGER).unit(PERCENT).accessMode(READ_ONLY).text("State of Health")),
-		SOC_CAP_REMAIN_MAH(Doc.of(LONG).unit(MILLIAMPERE_HOURS).accessMode(READ_ONLY).text("Remaining Capacity")),
-		SOC_FULL_CHARGE_CAP_MAH(Doc.of(LONG).unit(MILLIAMPERE_HOURS).accessMode(READ_ONLY).text("Full Charge Capacity")),
-		SOC_CYCLE_COUNT(Doc.of(LONG).unit(NONE).accessMode(READ_ONLY).text("Cycle Count")),
-		SOC_CYCLE_CAP_MAH(Doc.of(LONG).unit(MILLIAMPERE_HOURS).accessMode(READ_ONLY).text("Cycle Capacity")),
+		/*
+		 * SOC/SOH & Kapazitäten
+		 */
+		SOC_CAP_REMAIN_MAH(Doc.of(LONG).unit(MILLIAMPERE_HOURS).accessMode(READ_ONLY).text("Remaining capacity")),
+		SOC_FULL_CHARGE_CAP_MAH(Doc.of(LONG).unit(MILLIAMPERE_HOURS).accessMode(READ_ONLY).text("Full charge capacity")),
+		SOC_CYCLE_COUNT(Doc.of(LONG).unit(NONE).accessMode(READ_ONLY).text("Cycle count")),
+		SOC_CYCLE_CAP_MAH(Doc.of(LONG).unit(MILLIAMPERE_HOURS).accessMode(READ_ONLY).text("Cycle capacity")),
 
-		// --- Alarms / status ---
-		USER_ALARM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("User Alarm 1")),
+		/*
+		 * Alarme/Status
+		 */
+		USER_ALARM(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("User Alarm")),
 		USER_ALARM_2(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("User Alarm 2")),
-		TEMP_SENSOR_ABSENT(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("MOS Temp Sensor Absent")),
-		PCL_MODULE_STATUS(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Protection Module Status")),
+		TEMP_SENSOR_ABSENT(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Temp Sensor Absent")),
+		PCL_MODULE_STATUS(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("PCL Module Status")),
 
-		// --- Heater ---
-		HEAT_CURRENT_MA(Doc.of(INTEGER).unit(MILLIAMPERE).accessMode(READ_ONLY).text("Heater Current")),
-
-		// --- Runtime ---
-		SYS_RUN_TICKS_DS(Doc.of(LONG).unit(NONE).accessMode(READ_ONLY).text("System Run Time (0.1s ticks)")),
-		
-		// --- Settings aus Block 3 (0x1000) ---
-		// Wir lesen diese Werte und mappen sie intern auf die Battery-Nature
-		SETTINGS_CELL_UVP(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Settings: Cell under Voltage protection")),
-		SETTINGS_CELL_OVP(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Settings: Cell over Voltage protection%")),
-		SETTINGS_CELL_RCV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Settings: Cell requested charge voltage")),
-		SETTINGS_VOLTAGE_SOC_0(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Settings: Voltage at SOC 0%")),
-		SETTINGS_CAPACITY_AH(Doc.of(INTEGER).unit(MILLIAMPERE_HOURS).accessMode(READ_ONLY).text("Settings: Battery Capacity")),
-		SETTINGS_MAX_CHARGE_CURRENT(Doc.of(INTEGER).unit(MILLIAMPERE).accessMode(READ_ONLY).text("Settings: Max Charge Current")),
-		SETTINGS_MAX_DISCHARGE_CURRENT(Doc.of(INTEGER).unit(MILLIAMPERE).accessMode(READ_ONLY).text("Settings: Max Discharge Current")),
+		/*
+		 * Settings (aus Block 3 / 0x1000)
+		 */
+		SETTINGS_CELL_UVP(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Settings: Cell UVP")),
+		SETTINGS_CELL_OVP(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Settings: Cell OVP")),
+		SETTINGS_CELL_RCV(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Settings: Cell RCV")),
+		SETTINGS_VOLTAGE_SOC_0(Doc.of(INTEGER).unit(MILLIVOLT).accessMode(READ_ONLY).text("Settings: Voltage SOC 0")),
+		SETTINGS_CAPACITY_AH(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Settings: Capacity (mAh)")),
+		SETTINGS_MAX_CHARGE_CURRENT(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Settings: Max Charge Current")),
+		SETTINGS_MAX_DISCHARGE_CURRENT(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Settings: Max Discharge Current")),
 		SETTINGS_CELL_COUNT(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Settings: Cell Count")),
-		SETTINGS_CHARGE_ENABLE (Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Settings: Charge Enable")),
-		SETTINGS_DISCHARGE_ENABLE (Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Settings: Discharge Enable")),
-		SETTINGS_BALANCE_ENABLE (Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Settings: Balance Enable")),
-		SETTINGS_HEAT_ENABLE (Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Settings: Heat Enable"));
+		SETTINGS_CHARGE_ENABLE(Doc.of(INTEGER).unit(NONE).accessMode(READ_WRITE).text("Settings: Charge Enable")),
+		SETTINGS_DISCHARGE_ENABLE(Doc.of(INTEGER).unit(NONE).accessMode(READ_WRITE).text("Settings: Discharge Enable")),
+		SETTINGS_BALANCE_ENABLE(Doc.of(INTEGER).unit(NONE).accessMode(READ_WRITE).text("Settings: Balance Enable")),
+		SETTINGS_HEAT_ENABLE(Doc.of(INTEGER).unit(NONE).accessMode(READ_ONLY).text("Settings: Heat Enable"));
 
 		private final Doc doc;
 
